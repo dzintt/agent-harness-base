@@ -4,7 +4,7 @@ from agent_harness import Agent, AgentConfig, ChatMessage, ImagePart, TextPart
 
 
 async def main() -> None:
-    agent = Agent(config=AgentConfig(model="gpt-5"))
+    agent = Agent(config=AgentConfig(model="gpt-5.4"))
     chat = agent.chat()
 
     try:

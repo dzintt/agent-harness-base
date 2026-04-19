@@ -4,7 +4,7 @@ from agent_harness import Agent, AgentConfig
 
 
 async def main() -> None:
-    agent = Agent(config=AgentConfig(model="gpt-5"))
+    agent = Agent(config=AgentConfig(model="gpt-5.4"))
     chat = agent.chat(system_prompt="You are concise.")
 
     try:

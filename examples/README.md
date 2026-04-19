@@ -1,6 +1,6 @@
 # Examples
 
-These examples are meant to be copy-paste friendly reference points for the main ways this harness is intended to be used.
+These examples show the intended ways to use the harness.
 
 Run any example from the repo root:
 
@@ -8,68 +8,149 @@ Run any example from the repo root:
 uv run python examples/basic_agent.py
 ```
 
-## Example List
-
-- `basic_agent.py`
-  - Smallest useful agent setup
-  - Good starting point when you just want tools plus plain text output
-
-- `sync_agent.py`
-  - Shows the smallest sync `run_sync(...)` flow and explicit `close()`
-  - Use this when you want to stay entirely in normal synchronous Python
-
-- `sync_streaming.py`
-  - Shows how to iterate over streaming events from sync code
-  - Use this when you want streaming output without using `asyncio`
-
-- `chat_session.py`
-  - Shows how to keep follow-up message history automatically
-  - Use this for chat apps and multi-turn conversations
-
-- `chat_persistence.py`
-  - Shows exact chat snapshot export and restore
-  - Use this when you want to resume a chat later without rebuilding history manually
-
-- `system_prompt.py`
-  - Shows the first-class `system_prompt` shortcut on the agent, on a chat session, and as a one-off override
-  - Use this when you want behavior steering without manually prepending system or developer messages
-
-- `parallel_tools.py`
-  - Shows the single config flag for enabling parallel same-turn tool execution
-  - Use this when your tools are independent and safe to run concurrently
-
-- `image_input.py`
-  - Shows the simplest multimodal prompt with text plus one image
-  - Use this when you want image understanding without a persistent chat session
-
-- `file_input.py`
-  - Shows the simplest multimodal prompt with text plus one file such as a PDF
-  - Use this when you want document or file understanding without a persistent chat session
-
-- `chat_with_images.py`
-  - Shows a chat session where the first turn includes an image and the second turn follows up on it
-  - Use this for multimodal chat apps
-
-- `structured_output.py`
-  - Shows the simplest possible structured output flow
-  - Use this when you want `result.output_data` from a Pydantic schema
-
-- `structured_with_tools.py`
-  - Shows tools plus structured output together
-  - Use this when the model needs to call local code and still return a typed final result
-
-- `streaming.py`
-  - Shows how to stream text deltas and inspect the final completed event
-  - Use this when you want terminal-style progressive output
-
-## Shared Requirements
-
 All examples assume:
 
 - you already ran `uv sync`
 - `OPENAI_API_KEY` is set
 - you are running from the repo root
 
-Optional:
+`OPENAI_MODEL` is optional if you want `AgentConfig()` to pick the model from the environment.
 
-- set `OPENAI_MODEL` if you want to construct `AgentConfig()` from environment defaults
+## Start Here
+
+If you are new to the repo, read these in this order:
+
+1. `basic_agent.py`
+2. `structured_output.py`
+3. `streaming.py`
+4. `chat_session.py`
+5. `parallel_tools.py`
+
+## Example Guide
+
+### `basic_agent.py`
+
+Use this first.
+
+Shows:
+
+- the smallest useful `Agent`
+- a tool defined with `@tool`
+- a normal `await agent.run(...)` call
+- how to read `output_text` and `tool_results`
+
+### `sync_agent.py`
+
+Use this when your program is fully synchronous.
+
+Shows:
+
+- `agent.run_sync(...)`
+- `agent.close()`
+
+### `sync_streaming.py`
+
+Use this when you want streaming output from sync code.
+
+Shows:
+
+- `agent.stream_sync(...)`
+- handling `text_delta` and `completed` events
+
+### `chat_session.py`
+
+Use this when you want the harness to keep conversation history for you.
+
+Shows:
+
+- `chat = agent.chat()`
+- follow-up calls with `chat.run(...)`
+- `chat.history`
+
+### `chat_persistence.py`
+
+Use this when you want to save and resume chat state.
+
+Shows:
+
+- `chat.snapshot()`
+- `chat.export()`
+- `agent.chat_from_snapshot(...)`
+
+### `system_prompt.py`
+
+Use this when you want behavior steering without manually building message lists.
+
+Shows:
+
+- agent-level `system_prompt`
+- per-run `system_prompt`
+- chat-session `system_prompt`
+
+### `parallel_tools.py`
+
+Use this only when your tools are independent and safe to run together.
+
+Shows:
+
+- `AgentConfig(parallel_tool_calls=True)`
+- concurrent same-turn tool execution
+
+### `image_input.py`
+
+Use this for a one-turn image prompt.
+
+Shows:
+
+- `ChatMessage`
+- `TextPart`
+- `ImagePart.from_file(...)`
+
+### `file_input.py`
+
+Use this for a one-turn document prompt.
+
+Shows:
+
+- `ChatMessage`
+- `TextPart`
+- `FilePart.from_file(...)`
+
+### `chat_with_images.py`
+
+Use this when the first turn contains an image and later turns refer back to it.
+
+Shows:
+
+- multimodal chat history
+- follow-up questions after an image turn
+
+### `structured_output.py`
+
+Use this when you want a typed final result.
+
+Shows:
+
+- `response_model=...`
+- reading `result.output_data`
+
+### `structured_with_tools.py`
+
+Use this when the model must call a tool and still return typed output.
+
+Shows:
+
+- tools plus structured output in one run
+
+### `streaming.py`
+
+Use this when you want progressive output or tool lifecycle events.
+
+Shows:
+
+- `agent.stream(...)`
+- `text_delta`
+- `tool_call_started`
+- `tool_call_completed`
+- `completed`
+- `error`

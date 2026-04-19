@@ -2,7 +2,7 @@ from agent_harness import Agent, AgentConfig
 
 
 def main() -> None:
-    agent = Agent(config=AgentConfig(model="gpt-5"))
+    agent = Agent(config=AgentConfig(model="gpt-5.4"))
 
     try:
         for event in agent.stream_sync("Explain async IO in one short sentence."):

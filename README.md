@@ -1,8 +1,8 @@
-## Agent Harness Base
+# Agent Harness Base
 
-Small async-first base for building agents with the OpenAI Python SDK.
+Small async-first Python harness for building OpenAI-powered agents.
 
-The package exposes a minimal public API:
+This package gives you a thin layer over the OpenAI Responses API with a small public API:
 
 - `Agent`
 - `AgentConfig`
@@ -10,41 +10,70 @@ The package exposes a minimal public API:
 - `TextPart`
 - `ImagePart`
 - `FilePart`
+- `ChatSession`
+- `ChatSnapshot`
 - `ToolRegistry`
 - `tool`
 
-It is designed for:
+Use it when you want:
 
-- async execution with `AsyncOpenAI`
-- explicit sync wrappers for non-async users
-- simple decorator-based tool definitions
-- sequential local tool execution
-- optional parallel tool execution
-- streaming text deltas through an async iterator
-- trivial structured outputs with Pydantic models
-- file inputs for PDFs, documents, spreadsheets, presentations, and text/code files
+- one-shot runs or streaming
+- local Python tools with JSON-schema generation
+- optional same-turn parallel tool execution
+- structured outputs with Pydantic
+- in-memory chat history with exact snapshot/restore
+- explicit sync wrappers for non-async code
+- multimodal inputs for images and documents
 
-## What This Gives You
+Use something else when you want:
 
-This project is a small reusable base for future agent projects.
+- a full agent framework with planning, memory, or orchestration
+- hosted tool execution
+- retrieval, vector storage, or workflow state machines
 
-You can:
+This repo is a reusable base layer, not an opinionated product framework.
 
-- create an `Agent`
-- give the agent a first-class `system_prompt`
-- register tools with `@tool`
-- use either async or explicit sync entrypoints
-- call `await agent.run(...)` for a normal request
-- call `agent.run_sync(...)` in normal synchronous scripts
-- call `await agent.run([...messages...])` when you already have explicit conversation history
-- create `chat = agent.chat()` for persistent follow-up conversations
-- opt into parallel tool execution with one config flag
-- call `await agent.run(..., response_model=MySchema)` for structured output
-- call `agent.stream(...)` for incremental text and a final structured result
+## Repository Layout
 
-The goal is to keep the public API small while still covering the common paths you will use repeatedly in future projects.
+Use this structure when you add features or examples:
+
+```text
+agent-harness-base/
+|-- src/
+|   `-- agent_harness/
+|       |-- __init__.py           # Public package exports
+|       |-- agent.py              # Core run/stream loop
+|       |-- chat.py               # Stateful chat sessions and snapshots
+|       |-- config.py             # AgentConfig and env-backed settings
+|       |-- errors.py             # Public exception types
+|       |-- sync_utils.py         # Sync wrappers over the async runtime
+|       |-- types.py              # Pydantic models and multimodal parts
+|       |-- providers/
+|       |   |-- base.py           # Provider protocol and response types
+|       |   `-- openai.py         # OpenAI Responses API implementation
+|       `-- tools/
+|           |-- base.py           # Tool schema helpers
+|           |-- decorators.py     # @tool decorator
+|           `-- registry.py       # Tool registration and execution
+|-- examples/                     # Copy-paste usage examples
+|-- scripts/                      # Manual and live verification scripts
+|-- tests/                        # Local unit tests with fake providers
+|-- pyproject.toml                # Package metadata and dependencies
+|-- README.md                     # Main developer guide
+`-- .env.example                  # Environment variable template
+```
+
+Contributor guide:
+
+- put package code under `src/agent_harness/`
+- add new public APIs to `src/agent_harness/__init__.py`
+- add runnable usage samples under `examples/`
+- add verification scripts under `scripts/`
+- add local tests under `tests/`
 
 ## Install
+
+From the repo root:
 
 ```bash
 uv sync
@@ -56,7 +85,7 @@ Set your API key:
 $env:OPENAI_API_KEY="your_key_here"
 ```
 
-Run any example with:
+Run the smallest example:
 
 ```bash
 uv run python examples/basic_agent.py
@@ -78,115 +107,259 @@ async def ping(message: str) -> str:
 
 async def main() -> None:
     agent = Agent(
-        config=AgentConfig(model="gpt-5"),
+        config=AgentConfig(model="gpt-5.4"),
         tools=[ping],
         system_prompt="You are concise and helpful.",
     )
 
-    result = await agent.run("Call ping with hello and tell me the result.")
-    print(result.output_text)
+    try:
+        result = await agent.run("Call ping with hello and tell me the result.")
+        print(result.output_text)
+        print(result.tool_results)
+    finally:
+        await agent.aclose()
 
 
 asyncio.run(main())
 ```
 
-The result object includes:
+`result` is an `AgentRunResult` with:
 
-- `result.output_text`: the final assistant text
-- `result.output_data`: validated structured output when you pass `response_model=...`
-- `result.tool_results`: tool execution history
-- `result.raw_responses`: raw-ish provider payloads for debugging
+- `output_text`: final assistant text
+- `output_data`: validated Pydantic object when you pass `response_model=...`
+- `tool_results`: local tool execution results
+- `response_id`: provider response id when available
+- `raw_responses`: provider payloads for debugging
 
-## System Prompt
+## How The Harness Works
 
-You can set a first-class `system_prompt` without manually constructing a message list:
+The runtime model is simple:
+
+1. You pass a string or a list of messages to `Agent.run(...)` or `Agent.stream(...)`.
+2. The harness converts that input into Responses API items.
+3. If you set `system_prompt`, the harness prepends it as a `developer` message.
+4. The provider sends the request to the OpenAI Responses API.
+5. If the model returns tool calls, the harness runs the local tools and appends their outputs to the transcript.
+6. The harness repeats until the model returns a final assistant response or `max_turns` is hit.
+
+Nothing else hides behind the abstraction. `Agent` owns the loop. `ChatSession` stores conversation state. `ToolRegistry` owns tool schemas and execution.
+
+## Pick The Right API
+
+Use this guide:
+
+- One request, final answer: `await agent.run(...)`
+- One request, incremental text: `async for event in agent.stream(...)`
+- Synchronous script: `agent.run_sync(...)`
+- Synchronous streaming script: `agent.stream_sync(...)`
+- Multi-turn conversation with in-memory state: `chat = agent.chat()`
+- Resume a saved conversation exactly: `agent.chat_from_snapshot(...)`
+- Typed final output: pass `response_model=MyPydanticModel`
+- Images or files: pass `ChatMessage(..., content=[...parts...])`
+
+## Public API
+
+### `Agent`
+
+Main entrypoint.
 
 ```python
 from agent_harness import Agent, AgentConfig
 
 agent = Agent(
-    config=AgentConfig(model="gpt-5"),
-    system_prompt="You are concise and helpful.",
+    config=AgentConfig(model="gpt-5.4"),
+    tools=[...],          # optional
+    system_prompt="...",  # optional
 )
+```
 
-result = await agent.run("Say hello in five words or fewer.")
+Important methods:
+
+- `await agent.run(input_data, response_model=None, system_prompt=None)`
+- `async for event in agent.stream(input_data, response_model=None, system_prompt=None)`
+- `agent.run_sync(...)`
+- `agent.stream_sync(...)`
+- `agent.chat(messages=None, system_prompt=None)`
+- `agent.chat_from_snapshot(snapshot)`
+- `await agent.aclose()`
+- `agent.close()`
+
+### `ChatSession`
+
+Stateful wrapper around `Agent`.
+
+```python
+chat = agent.chat(system_prompt="You are concise.")
+
+await chat.run("My name is Anson.")
+result = await chat.run("What's my name?")
+
+print(result.output_text)
+print(chat.history)
+```
+
+Useful methods:
+
+- `await chat.run(...)`
+- `async for event in chat.stream(...)`
+- `chat.run_sync(...)`
+- `chat.stream_sync(...)`
+- `chat.snapshot()`
+- `chat.export()`
+- `chat.reset()`
+
+### Message Types
+
+Use a plain string for normal text-only requests:
+
+```python
+result = await agent.run("Hello")
+```
+
+Use explicit messages when you already have conversation history or need multimodal content:
+
+```python
+from agent_harness import ChatMessage
+
+messages = [
+    ChatMessage(role="user", content="My name is Anson."),
+    ChatMessage(role="assistant", content="Noted."),
+    ChatMessage(role="user", content="What's my name?"),
+]
+
+result = await agent.run(messages)
+```
+
+`ChatMessage.role` can be:
+
+- `user`
+- `assistant`
+- `developer`
+- `system`
+
+### Content Parts
+
+- `TextPart("...")`
+- `ImagePart.from_url(...)`
+- `ImagePart.from_file(...)`
+- `FilePart.from_url(...)`
+- `FilePart.from_file(...)`
+
+## Plain Text And Message Input
+
+The input shape stays simple unless you need more.
+
+### Smallest call
+
+```python
+result = await agent.run("Say hello.")
 print(result.output_text)
 ```
 
-You can override it for one request:
+### Explicit message list
 
 ```python
+from agent_harness import ChatMessage
+
 result = await agent.run(
-    "Explain async IO.",
-    system_prompt="You are a teacher who explains things simply.",
+    [
+        ChatMessage(role="system", content="You are concise."),
+        ChatMessage(role="user", content="My name is Anson."),
+        ChatMessage(role="assistant", content="Noted."),
+        ChatMessage(role="user", content="What's my name?"),
+    ]
 )
-```
-
-And you can give a chat session its own default prompt:
-
-```python
-chat = agent.chat(system_prompt="You are a terse coding assistant.")
-
-await chat.run("Help me prepare for a backend interview.")
-result = await chat.run("Ask me the next question.")
 ```
 
 Notes:
 
-- `system_prompt` is the convenience path
-- advanced users can still pass explicit `ChatMessage(role="system", ...)` or `ChatMessage(role="developer", ...)`
-- if you pass both, the harness sends both and does not deduplicate them
+- `input_data` can be a string or a sequence of messages
+- inside a sequence, bare strings are treated as user messages
+- the harness accepts `ChatMessage` instances or plain dicts that validate into `ChatMessage`
 
-## Sync Usage
+## System Prompt
 
-The harness is async-first internally, but it also exposes explicit sync wrappers for users who do not want to work with `asyncio`.
-
-### Smallest sync run example
+You can set a default prompt on the agent:
 
 ```python
-from agent_harness import Agent, AgentConfig
-
-agent = Agent(config=AgentConfig(model="gpt-5"))
-
-result = agent.run_sync("Say hello.")
-print(result.output_text)
-agent.close()
+agent = Agent(
+    config=AgentConfig(model="gpt-5.4"),
+    system_prompt="You are concise and helpful.",
+)
 ```
 
-### Sync streaming example
+Override it for one call:
 
 ```python
-for event in agent.stream_sync("Explain async IO in one sentence."):
-    if event.type == "text_delta":
-        print(event.delta, end="")
+result = await agent.run(
+    "Explain async IO.",
+    system_prompt="You are a patient teacher.",
+)
 ```
 
-### Sync tool example
+Set a default prompt for a chat session:
+
+```python
+chat = agent.chat(system_prompt="You are a terse coding assistant.")
+```
+
+Important behavior:
+
+- the convenience `system_prompt` is sent as a `developer` message
+- if you also pass explicit `system` or `developer` messages, the harness sends both
+- `chat.history` does not include the convenience prompt
+- chat snapshots store the session `system_prompt`, not a fake persisted message for it
+
+## Tools
+
+Define tools with `@tool`:
 
 ```python
 from agent_harness import tool
 
+
 @tool
-def ping(message: str) -> str:
-    return f"pong: {message}"
+async def lookup_user(user_id: int) -> str:
+    """Return a serialized user record."""
+    return '{"id": 1, "name": "Ada"}'
 ```
 
-Important:
+Register them:
 
-- `run_sync()` and `stream_sync()` are for normal synchronous scripts and apps
-- they cannot be called from inside an already-running event loop
-- in async apps, use `await agent.run(...)` and `async for event in agent.stream(...)`
+```python
+agent = Agent(
+    config=AgentConfig(model="gpt-5.4"),
+    tools=[lookup_user],
+)
+```
 
-## Parallel Tool Calls
+Tool rules:
+
+- tools can be `async def` or normal `def`
+- every parameter needs a type annotation
+- `*args` and `**kwargs` are not allowed
+- the tool description comes from the first docstring line unless you override it
+- sync tools run in a worker thread
+- tool outputs are serialized to strings before the harness sends them back to the model
+
+You can customize the metadata:
+
+```python
+@tool(name="lookup_user", description="Fetch a user record.")
+async def get_user(user_id: int) -> str:
+    return '{"id": 1, "name": "Ada"}'
+```
+
+### Parallel Tool Calls
 
 Tool execution is sequential by default.
 
-If your tools are independent and safe to run concurrently, you can enable parallel tool handling with one config flag:
+Enable same-turn parallel execution only when your tools are independent:
 
 ```python
 agent = Agent(
     config=AgentConfig(
-        model="gpt-5",
+        model="gpt-5.4",
         parallel_tool_calls=True,
     ),
     tools=[get_weather, get_news],
@@ -197,48 +370,151 @@ When enabled:
 
 - the harness sends `parallel_tool_calls=True` to the Responses API
 - if the model returns multiple tool calls in the same turn, the harness executes them concurrently
-- tool outputs are still appended back to the transcript in deterministic order
+- returned tool results still keep the model's original call order
 
-Use this only when your tools are independent and safe to run concurrently. The harness does not try to infer that for you.
+Good fits:
 
-Good candidates:
-
-- weather + news + stock lookups
 - independent API fetches
 - read-only database queries
+- weather, news, and market lookups in one turn
 
-Risky candidates:
+Bad fits:
 
-- create invoice + send invoice email
-- checkout + send receipt
-- any order-dependent or side-effectful workflow
+- create invoice then email invoice
+- checkout then send receipt
+- any tool set with ordering or shared mutable state
+
+## Structured Output
+
+Pass a Pydantic model as `response_model`:
+
+```python
+from pydantic import BaseModel
+
+
+class Person(BaseModel):
+    name: str
+    age: int
+
+
+result = await agent.run(
+    "Extract the person from: Sarah is 29 years old.",
+    response_model=Person,
+)
+
+print(result.output_data)
+```
+
+Structured outputs work with normal runs, streaming, and tool calls.
+
+Notes:
+
+- the final parsed object is available as `result.output_data`
+- the raw assistant text still remains in `result.output_text`
+- if the provider cannot satisfy the structured output request, `run()` raises and `stream()` emits an `error` event
+
+## Streaming
+
+Use `stream()` when you want incremental text or tool lifecycle events:
+
+```python
+async for event in agent.stream("Explain async IO in one sentence."):
+    if event.type == "text_delta" and event.delta:
+        print(event.delta, end="")
+    elif event.type == "completed" and event.result is not None:
+        print()
+        print(event.result.output_text)
+```
+
+Event types:
+
+- `text_delta`
+- `tool_call_started`
+- `tool_call_completed`
+- `completed`
+- `error`
+
+Structured streaming:
+
+```python
+from pydantic import BaseModel
+
+
+class Summary(BaseModel):
+    title: str
+    bullets: list[str]
+
+
+async for event in agent.stream("Summarize this text.", response_model=Summary):
+    if event.type == "completed" and event.result is not None:
+        print(event.result.output_data)
+```
+
+Important behavior:
+
+- text arrives through `text_delta`
+- structured output appears only on the final `completed` event
+- if the stream fails, the harness yields one `error` event and ends the stream
+
+## Chat Sessions
+
+Use a chat session when you want the harness to hold conversation state for you:
+
+```python
+chat = agent.chat(system_prompt="You are concise.")
+
+await chat.run("My name is Anson.")
+result = await chat.run("What's my name?")
+
+print(result.output_text)
+print(chat.history)
+```
+
+`chat.history` returns simple `ChatMessage` values for display or storage.
+
+Important behavior:
+
+- the session stores message history in memory
+- each `chat.run(...)` sends prior conversation items plus the new turn
+- tool output items are not exposed in `chat.history`
+- `chat.reset()` clears the stored conversation
+
+### Snapshot And Restore
+
+Use snapshots when you need exact resumable chat state:
+
+```python
+chat = agent.chat(system_prompt="You are concise.")
+
+await chat.run("My name is Anson.")
+await chat.run("My favorite color is teal.")
+
+snapshot = chat.snapshot()
+payload = chat.export()
+restored = agent.chat_from_snapshot(payload)
+```
+
+Notes:
+
+- `chat.snapshot()` returns a typed `ChatSnapshot`
+- `chat.export()` returns a JSON-friendly dict
+- `agent.chat_from_snapshot(...)` restores the conversation items and chat `system_prompt`
+- snapshots restore conversation state only
+- snapshots do not restore model config, tools, or provider settings
 
 ## Images
 
-The API is intentionally two-tier:
-
-- plain text stays trivial
-- images use a multimodal message shape only when you need them
-
-### Plain text
+Use an explicit content list only when you need multimodal input:
 
 ```python
-result = await agent.run("Hello")
-```
-
-### Remote image URL
-
-```python
-from agent_harness import Agent, AgentConfig, ChatMessage, ImagePart, TextPart
-
-agent = Agent(config=AgentConfig(model="gpt-5"))
+from agent_harness import ChatMessage, ImagePart, TextPart
 
 result = await agent.run(
     [
         ChatMessage(
             role="user",
             content=[
-                TextPart("What is in this image?"),
+                TextPart("Describe this image."),
                 ImagePart.from_url("https://example.com/cat.png"),
             ],
         )
@@ -246,58 +522,27 @@ result = await agent.run(
 )
 ```
 
-### Local image file
+Local image input:
 
 ```python
-result = await agent.run(
-    [
-        ChatMessage(
-            role="user",
-            content=[
-                TextPart("Describe this image."),
-                ImagePart.from_file("cat.png"),
-            ],
-        )
-    ]
-)
+ImagePart.from_file("cat.png")
 ```
 
-### Chat with images
+Supported local image formats:
 
-```python
-chat = agent.chat()
+- PNG
+- JPEG
+- WEBP
+- GIF
 
-await chat.run(
-    [
-        ChatMessage(
-            role="user",
-            content=[
-                TextPart("Remember this photo."),
-                ImagePart.from_file("photo.jpg"),
-            ],
-        )
-    ]
-)
-
-result = await chat.run("What was in the photo?")
-```
+`ImagePart.from_file(...)` reads the file and converts it to a Base64 data URL.
 
 ## Files
 
-Plain text still stays trivial:
+File input uses the same multimodal message shape:
 
 ```python
-result = await agent.run("Hello")
-```
-
-Only switch to a multimodal content list when you actually need files.
-
-### Local file
-
-```python
-from agent_harness import Agent, AgentConfig, ChatMessage, FilePart, TextPart
-
-agent = Agent(config=AgentConfig(model="gpt-5"))
+from agent_harness import ChatMessage, FilePart, TextPart
 
 result = await agent.run(
     [
@@ -312,307 +557,138 @@ result = await agent.run(
 )
 ```
 
-### File URL
+Remote file input:
 
 ```python
-result = await agent.run(
-    [
-        ChatMessage(
-            role="user",
-            content=[
-                TextPart("What are the key points in this document?"),
-                FilePart.from_url("https://example.com/report.pdf"),
-            ],
-        )
-    ]
+FilePart.from_url("https://example.com/report.pdf")
+```
+
+`FilePart.from_file(...)` reads the file, infers a supported MIME type, and converts it to a Base64 data URL.
+
+Common supported file types include:
+
+- PDF
+- TXT
+- CSV and TSV
+- JSON
+- HTML, XML, YAML, Markdown
+- DOC and DOCX
+- XLS and XLSX
+- PPT and PPTX
+- RTF
+- ODT
+
+This helper does not use the OpenAI Files API. It keeps local file input self-contained and works with OpenAI-compatible base URLs.
+
+## Sync Usage
+
+The library is async-first. Use the sync wrappers only in synchronous programs.
+
+### Sync run
+
+```python
+agent = Agent(config=AgentConfig(model="gpt-5.4"))
+
+try:
+    result = agent.run_sync("Say hello.")
+    print(result.output_text)
+finally:
+    agent.close()
+```
+
+### Sync stream
+
+```python
+for event in agent.stream_sync("Explain async IO in one sentence."):
+    if event.type == "text_delta" and event.delta:
+        print(event.delta, end="")
+```
+
+Important behavior:
+
+- `run_sync()` and `stream_sync()` cannot run inside an existing event loop
+- use `await agent.run(...)` and `async for event in agent.stream(...)` inside async apps
+- call `agent.close()` when you finish using sync wrappers
+
+## Configuration
+
+`AgentConfig` fields:
+
+```python
+AgentConfig(
+    model="gpt-5.4",
+    api_key=None,
+    base_url=None,
+    max_turns=8,
+    parallel_tool_calls=False,
+    temperature=None,
+    timeout=None,
 )
 ```
+
+Environment variables:
+
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `OPENAI_BASE_URL`
 
 Notes:
 
-- `FilePart.from_file(...)` encodes the local file as a Base64 data URL automatically
-- `FilePart.from_url(...)` uses the official Responses `input_file.file_url` path
-- file support intentionally avoids the OpenAI Files API so it remains compatible with custom OpenAI-compatible base URLs
-- local file support follows the current OpenAI file-input guide categories: PDFs, spreadsheets, rich documents, presentations, and text/code files
+- `model` is required unless `OPENAI_MODEL` is set
+- `api_key` defaults from `OPENAI_API_KEY`
+- `base_url` lets you target an OpenAI-compatible endpoint
+- `max_turns` limits tool-call loops before the harness raises `MaxTurnsExceededError`
 
-## Conversation History
+## Errors And Failure Model
 
-There are now two trivial ways to work with more than one message.
+`run()` and `run_sync()` raise exceptions such as:
 
-### 1. Pass a list of messages directly
+- `ProviderError`
+- `ToolExecutionError`
+- `MaxTurnsExceededError`
 
-Use this when you already store conversation history yourself:
+Streaming behaves differently:
 
-```python
-from agent_harness import Agent, AgentConfig, ChatMessage
+- provider, tool, and loop errors are converted into an `AgentEvent(type="error", ...)`
+- after the `error` event, the stream ends
 
-agent = Agent(config=AgentConfig(model="gpt-5"))
+This split is intentional:
 
-result = await agent.run(
-    [
-        ChatMessage(role="system", content="You are concise."),
-        ChatMessage(role="user", content="My name is Anson."),
-        ChatMessage(role="assistant", content="Noted."),
-        ChatMessage(role="user", content="What's my name?"),
-    ]
-)
-```
+- final-result APIs raise
+- streaming APIs emit lifecycle events
 
-### 2. Use a chat session
+## Example Index
 
-Use this when you want the harness to keep the conversation history for you:
+See [examples/README.md](examples/README.md) for a guided list.
 
-```python
-chat = agent.chat(system_prompt="You are concise.")
+Main examples:
 
-await chat.run("My name is Anson.")
-result = await chat.run("What's my name?")
-
-print(result.output_text)
-print(chat.history)
-```
-
-`chat.history` gives you a simple list of `ChatMessage` values for display or storage.
-It does not include the convenience `system_prompt` unless you explicitly passed a system or developer message yourself.
-
-## Conversation Persistence
-
-There are two different persistence levels:
-
-- `chat.history`
-  - simple user-facing `ChatMessage` values
-  - best for display or when you already manage conversation history yourself
-- `chat.snapshot()` / `chat.export()`
-  - exact resumable session state
-  - best when you want to pause and resume a chat later without rebuilding it manually
-
-### Exact session snapshot
-
-```python
-chat = agent.chat(system_prompt="You are concise.")
-
-await chat.run("My name is Anson.")
-await chat.run("My favorite color is teal.")
-
-snapshot = chat.snapshot()
-payload = chat.export()
-```
-
-### Restore later
-
-```python
-restored = agent.chat_from_snapshot(payload)
-result = await restored.run("What is my favorite color?")
-
-print(result.output_text)
-```
-
-### Notes
-
-- `chat.snapshot()` returns a typed `ChatSnapshot`
-- `chat.export()` returns a JSON-friendly dict via `snapshot().model_dump(mode="json")`
-- `agent.chat_from_snapshot(...)` restores the chat session state exactly
-- snapshots restore conversation state only
-- snapshots do not restore model config, tools, or provider settings
-- snapshot restoration preserves the chat session `system_prompt`
-- sync and async users use the same snapshot/export/restore helpers because these methods are local-only and not async
-
-## Examples
-
-Available examples:
-
-- [basic_agent.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/basic_agent.py): smallest possible agent with one tool
-- [sync_agent.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/sync_agent.py): smallest sync `run_sync(...)` flow with explicit `close()`
-- [sync_streaming.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/sync_streaming.py): sync iteration over streaming events
-- [chat_session.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/chat_session.py): persistent conversation history for follow-up chat apps
-- [chat_persistence.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/chat_persistence.py): export an exact chat snapshot and restore it later
-- [system_prompt.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/system_prompt.py): first-class system prompt defaults and one-off overrides
-- [parallel_tools.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/parallel_tools.py): opt into concurrent same-turn tool execution
-- [image_input.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/image_input.py): one-turn multimodal input with text plus an image
-- [file_input.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/file_input.py): one-turn multimodal input with text plus a file such as a PDF
-- [chat_with_images.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/chat_with_images.py): follow-up chat after sending an image
-- [structured_output.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/structured_output.py): extract typed data with a Pydantic schema
-- [structured_with_tools.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/structured_with_tools.py): combine tools and structured outputs
-- [streaming.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/streaming.py): stream text deltas and read the final result
-- [examples/README.md](/C:/Users/Anson/Desktop/agent-harness-base/examples/README.md): example index and when to use each one
-
-## Structured Outputs
-
-Pass a Pydantic model directly to `run()` and read the validated result from `output_data`:
-
-```python
-from pydantic import BaseModel
-from agent_harness import Agent, AgentConfig
-
-
-class Person(BaseModel):
-    name: str
-    age: int
-
-
-agent = Agent(config=AgentConfig(model="gpt-5"))
-
-result = await agent.run(
-    "Extract the person from: Sarah is 29 years old.",
-    response_model=Person,
-)
-
-print(result.output_data)
-```
-
-This is the trivial path the harness is optimized for:
-
-```python
-result = await agent.run("...", response_model=MySchema)
-data = result.output_data
-```
-
-Structured outputs also work alongside tools:
-
-```python
-from pydantic import BaseModel
-from agent_harness import Agent, AgentConfig, tool
-
-
-class WeatherAnswer(BaseModel):
-    city: str
-    temperature_f: int
-    summary: str
-
-
-@tool
-async def get_weather(city: str) -> str:
-    """Return fake weather data."""
-    return '{"city":"San Francisco","temperature_f":65,"summary":"Foggy"}'
-
-
-agent = Agent(config=AgentConfig(model="gpt-5"), tools=[get_weather])
-
-result = await agent.run(
-    "Use the weather tool and return a structured answer.",
-    response_model=WeatherAnswer,
-)
-
-print(result.output_data)
-```
-
-When you pass `response_model=...`:
-
-- the harness uses the OpenAI SDK structured output path
-- the final parsed value is returned as `result.output_data`
-- the normal text result still remains available as `result.output_text`
-
-## Streaming
-
-Use `run()` when you want a single final result object.
-
-Use `stream()` when you want incremental text and tool lifecycle events:
-
-```python
-async for event in agent.stream("Say hi"):
-    if event.type == "text_delta":
-        print(event.delta, end="")
-```
-
-Structured streaming exposes the parsed schema on the final completed event:
-
-```python
-async for event in agent.stream("Summarize this text.", response_model=Summary):
-    if event.type == "text_delta":
-        print(event.delta, end="")
-    elif event.type == "completed":
-        print(event.result.output_data)
-```
-
-Streaming event types:
-
-- `text_delta`: incremental assistant text
-- `tool_call_started`: a tool call is about to run
-- `tool_call_completed`: a tool finished running
-- `completed`: final `AgentRunResult`
-- `error`: the stream failed
-
-Structured output in streaming mode is exposed only on the final `completed` event:
-
-- you still receive text deltas as normal
-- `event.result.output_data` is populated only after the response is complete and validated
-
-Streaming also works with chat sessions:
-
-```python
-chat = agent.chat()
-
-async for event in chat.stream("Hello there"):
-    ...
-
-async for event in chat.stream("Follow up on that"):
-    ...
-```
-
-## Tools
-
-Tools are functions decorated with `@tool`:
-
-```python
-from agent_harness import tool
-
-
-@tool
-def lookup_user(user_id: int) -> str:
-    """Return a serialized user record."""
-    return '{"id": 1, "name": "Ada"}'
-```
-
-Tool rules:
-
-- tools can use either `async def` or normal `def`
-- every parameter must have a type annotation
-- the tool description comes from the first line of the docstring
-- tools are executed sequentially by default
-- set `AgentConfig(parallel_tool_calls=True)` if your tool set is safe for concurrent execution
-
-You can pass tools as a list:
-
-```python
-agent = Agent(
-    config=AgentConfig(model="gpt-5"),
-    tools=[lookup_user],
-)
-```
-
-## Environment
-
-The harness reads `OPENAI_API_KEY` automatically if `api_key` is not passed directly.
-
-An `OPENAI_MODEL` value can also be used as a convenience when creating `AgentConfig()` from environment-backed values.
-
-## API Summary
-
-- `Agent(config, tools=None, provider=None, system_prompt=None)`: main entrypoint
-- `AgentConfig(parallel_tool_calls=False)`: sequential by default, optional same-turn concurrent tool execution
-- `await agent.run(input_data, response_model=None, system_prompt=None)`: final result API for one message or many
-- `agent.run_sync(input_data, response_model=None, system_prompt=None)`: sync wrapper for normal scripts
-- `agent.stream(input_data, response_model=None, system_prompt=None)`: streaming API for one message or many
-- `agent.stream_sync(input_data, response_model=None, system_prompt=None)`: sync wrapper around streaming events
-- `agent.close()`: sync wrapper for `aclose()`
-- `agent.chat(messages=None, system_prompt=None)`: create a persistent chat session with in-memory history
-- `agent.chat_from_snapshot(snapshot)`: restore a chat session from an exact saved snapshot
-- `chat.run_sync(...)` / `chat.stream_sync(...)`: sync chat session wrappers
-- `AgentConfig(...)`: runtime configuration
-- `ChatMessage(role, content)`: simple message type for explicit conversation history
-- `ChatSnapshot(version="v1", items=[...], system_prompt=...)`: exact resumable chat session state
-- `TextPart(...)`: text content inside a multimodal message
-- `ImagePart.from_url(...)` / `ImagePart.from_file(...)`: image content inside a multimodal message
-- `FilePart.from_url(...)` / `FilePart.from_file(...)`: file content inside a multimodal message
-- `@tool`: tool decorator
-- `ToolRegistry`: explicit tool registration if you need it
+- [basic_agent.py](examples/basic_agent.py)
+- [sync_agent.py](examples/sync_agent.py)
+- [sync_streaming.py](examples/sync_streaming.py)
+- [chat_session.py](examples/chat_session.py)
+- [chat_persistence.py](examples/chat_persistence.py)
+- [system_prompt.py](examples/system_prompt.py)
+- [parallel_tools.py](examples/parallel_tools.py)
+- [image_input.py](examples/image_input.py)
+- [file_input.py](examples/file_input.py)
+- [chat_with_images.py](examples/chat_with_images.py)
+- [structured_output.py](examples/structured_output.py)
+- [structured_with_tools.py](examples/structured_with_tools.py)
+- [streaming.py](examples/streaming.py)
 
 ## Development
 
-Run tests:
+Run the test suite:
 
 ```bash
 uv run pytest
 ```
 
-This repo keeps tests fully local and does not require a real OpenAI API key for the test suite.
+Run the live end-to-end script when you want to verify the real provider path with an API key:
+
+```bash
+uv run python scripts/live_e2e_test.py
+```
+
+The unit tests run without a real API key. The live script does not.

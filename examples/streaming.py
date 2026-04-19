@@ -11,7 +11,7 @@ class Summary(BaseModel):
 
 
 async def main() -> None:
-    agent = Agent(config=AgentConfig(model="gpt-5"))
+    agent = Agent(config=AgentConfig(model="gpt-5.4"))
 
     try:
         async for event in agent.stream(

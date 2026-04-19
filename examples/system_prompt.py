@@ -5,7 +5,7 @@ from agent_harness import Agent, AgentConfig
 
 async def main() -> None:
     agent = Agent(
-        config=AgentConfig(model="gpt-5"),
+        config=AgentConfig(model="gpt-5.4"),
         system_prompt="You are concise and helpful.",
     )
 
