@@ -4,6 +4,7 @@ import json
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
+from pydantic import BaseModel
 from openai import AsyncOpenAI, DefaultAioHttpClient
 
 from agent_harness.config import AgentConfig
@@ -28,9 +29,15 @@ class OpenAIResponsesProvider:
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> ProviderResponse:
         try:
-            response = await self._client.responses.create(**self._request_kwargs(input_items, tools))
+            if response_model is None:
+                response = await self._client.responses.create(**self._request_kwargs(input_items, tools))
+            else:
+                response = await self._client.responses.parse(
+                    **self._request_kwargs(input_items, tools, response_model=response_model)
+                )
         except Exception as exc:
             raise ProviderError(f"OpenAI response request failed: {exc}") from exc
 
@@ -41,9 +48,12 @@ class OpenAIResponsesProvider:
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> AsyncIterator[ProviderTextDeltaEvent | ProviderCompletedEvent]:
         try:
-            async with self._client.responses.stream(**self._request_kwargs(input_items, tools)) as stream:
+            async with self._client.responses.stream(
+                **self._request_kwargs(input_items, tools, response_model=response_model)
+            ) as stream:
                 async for event in stream:
                     if event.type == "response.output_text.delta":
                         yield ProviderTextDeltaEvent(delta=event.delta)
@@ -61,6 +71,7 @@ class OpenAIResponsesProvider:
         self,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "model": self._config.model,
@@ -73,6 +84,9 @@ class OpenAIResponsesProvider:
 
         if self._config.temperature is not None:
             kwargs["temperature"] = self._config.temperature
+
+        if response_model is not None:
+            kwargs["text_format"] = response_model
 
         return kwargs
 
@@ -105,6 +119,7 @@ class OpenAIResponsesProvider:
         return ProviderResponse(
             response_id=getattr(response, "id", None),
             output_text=getattr(response, "output_text", ""),
+            output_data=getattr(response, "output_parsed", None),
             tool_calls=tool_calls,
             output_items=output_items,
             raw_response=self._to_dict(response),

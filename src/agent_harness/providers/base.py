@@ -15,6 +15,7 @@ class ProviderResponse(BaseModel):
 
     response_id: str | None = None
     output_text: str = ""
+    output_data: BaseModel | None = None
     tool_calls: list[ToolCallRequest] = Field(default_factory=list)
     output_items: list[ConversationItem] = Field(default_factory=list)
     raw_response: dict[str, Any] | None = None
@@ -43,6 +44,7 @@ class Provider(Protocol):
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> ProviderResponse: ...
 
     async def stream_response(
@@ -50,6 +52,7 @@ class Provider(Protocol):
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> AsyncIterator[ProviderEvent]: ...
 
     async def close(self) -> None: ...

@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from agent_harness import Agent, AgentConfig, tool
 from agent_harness.errors import MaxTurnsExceededError, ProviderError, ToolExecutionError
@@ -20,8 +21,15 @@ class FakeProvider:
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> ProviderResponse:
-        self.calls.append({"input_items": list(input_items), "tools": list(tools)})
+        self.calls.append(
+            {
+                "input_items": list(input_items),
+                "tools": list(tools),
+                "response_model": response_model,
+            }
+        )
         if not self.responses:
             raise ProviderError("No more fake responses configured.")
         return self.responses.pop(0)
@@ -31,6 +39,7 @@ class FakeProvider:
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> AsyncIterator[ProviderTextDeltaEvent | ProviderCompletedEvent]:
         raise NotImplementedError
 
@@ -56,6 +65,17 @@ async def explode(message: str) -> str:
     raise ValueError(message)
 
 
+class Person(BaseModel):
+    name: str
+    age: int
+
+
+class WeatherAnswer(BaseModel):
+    city: str
+    temperature_f: int
+    summary: str
+
+
 @pytest.mark.asyncio
 async def test_run_without_tools_returns_plain_text() -> None:
     provider = FakeProvider(
@@ -79,6 +99,7 @@ async def test_run_without_tools_returns_plain_text() -> None:
     result = await agent.run("Say hello.")
 
     assert result.output_text == "hello world"
+    assert result.output_data is None
     assert result.tool_results == []
 
 
@@ -243,3 +264,97 @@ async def test_tool_errors_surface_as_tool_execution_errors() -> None:
 
     with pytest.raises(ToolExecutionError):
         await agent.run("Fail.")
+
+
+@pytest.mark.asyncio
+async def test_run_returns_structured_output_without_tools() -> None:
+    person = Person(name="Sarah", age=29)
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text='{"name":"Sarah","age":29}',
+                output_data=person,
+                output_items=[],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+
+    result = await agent.run(
+        "Extract the person from: Sarah is 29 years old.",
+        response_model=Person,
+    )
+
+    assert result.output_data == person
+    assert result.output_text == '{"name":"Sarah","age":29}'
+    assert provider.calls[0]["response_model"] is Person
+
+
+@pytest.mark.asyncio
+async def test_run_returns_structured_output_after_tool_call() -> None:
+    weather = WeatherAnswer(city="San Francisco", temperature_f=65, summary="Foggy")
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                tool_calls=[
+                    {
+                        "call_id": "call_1",
+                        "name": "ping",
+                        "arguments": {"message": "weather"},
+                        "raw_arguments": '{"message":"weather"}',
+                    }
+                ],
+                output_items=[
+                    {
+                        "type": "function_call",
+                        "call_id": "call_1",
+                        "name": "ping",
+                        "arguments": '{"message":"weather"}',
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            ),
+            ProviderResponse(
+                response_id="resp_2",
+                output_text='{"city":"San Francisco","temperature_f":65,"summary":"Foggy"}',
+                output_data=weather,
+                output_items=[],
+                raw_response={"id": "resp_2"},
+            ),
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), tools=[ping], provider=provider)
+
+    result = await agent.run(
+        "Use the tool and return a structured weather answer.",
+        response_model=WeatherAnswer,
+    )
+
+    assert result.output_data == weather
+    assert [tool_result.output for tool_result in result.tool_results] == ["pong: weather"]
+    assert provider.calls[0]["response_model"] is WeatherAnswer
+    assert provider.calls[1]["response_model"] is WeatherAnswer
+
+
+@pytest.mark.asyncio
+async def test_run_surfaces_structured_provider_failures() -> None:
+    class FailingStructuredProvider(FakeProvider):
+        async def create_response(
+            self,
+            *,
+            input_items: Sequence[ConversationItem],
+            tools: Sequence[dict[str, Any]],
+            response_model: type[BaseModel] | None = None,
+        ) -> ProviderResponse:
+            raise ProviderError("structured parse failed")
+
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=FailingStructuredProvider([]),
+    )
+
+    with pytest.raises(ProviderError, match="structured parse failed"):
+        await agent.run("Return structured data.", response_model=Person)

@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from agent_harness import Agent, AgentConfig, tool
 from agent_harness.providers.base import ConversationItem, ProviderCompletedEvent, ProviderResponse, ProviderTextDeltaEvent
@@ -14,7 +15,13 @@ class FakeStreamingProvider:
         self.event_sequences = list(event_sequences)
         self.calls: list[dict[str, Any]] = []
 
-    async def create_response(self, *, input_items: Sequence[ConversationItem], tools: Sequence[dict[str, Any]]) -> ProviderResponse:
+    async def create_response(
+        self,
+        *,
+        input_items: Sequence[ConversationItem],
+        tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
+    ) -> ProviderResponse:
         raise NotImplementedError
 
     async def stream_response(
@@ -22,8 +29,15 @@ class FakeStreamingProvider:
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> AsyncIterator[ProviderTextDeltaEvent | ProviderCompletedEvent]:
-        self.calls.append({"input_items": list(input_items), "tools": list(tools)})
+        self.calls.append(
+            {
+                "input_items": list(input_items),
+                "tools": list(tools),
+                "response_model": response_model,
+            }
+        )
         for event in self.event_sequences.pop(0):
             yield event
 
@@ -37,6 +51,7 @@ class ExplodingStreamingProvider(FakeStreamingProvider):
         *,
         input_items: Sequence[ConversationItem],
         tools: Sequence[dict[str, Any]],
+        response_model: type[BaseModel] | None = None,
     ) -> AsyncIterator[ProviderTextDeltaEvent | ProviderCompletedEvent]:
         raise RuntimeError("stream failed")
         yield
@@ -46,6 +61,11 @@ class ExplodingStreamingProvider(FakeStreamingProvider):
 async def ping(message: str) -> str:
     """Echo a message back."""
     return f"pong: {message}"
+
+
+class Summary(BaseModel):
+    title: str
+    bullets: list[str]
 
 
 @pytest.mark.asyncio
@@ -141,3 +161,122 @@ async def test_stream_yields_error_event_on_provider_failure() -> None:
 
     assert [event.type for event in events] == ["error"]
     assert events[0].error == "stream failed"
+
+
+@pytest.mark.asyncio
+async def test_stream_returns_structured_output_on_completed_event() -> None:
+    summary = Summary(title="Hello", bullets=["one", "two"])
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderTextDeltaEvent(delta="{"),
+                ProviderTextDeltaEvent(delta='"title":"Hello"}'),
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text='{"title":"Hello","bullets":["one","two"]}',
+                        output_data=summary,
+                        output_items=[],
+                        raw_response={"id": "resp_1"},
+                    )
+                ),
+            ]
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+
+    events = [
+        event
+        async for event in agent.stream(
+            "Summarize this text.",
+            response_model=Summary,
+        )
+    ]
+
+    assert [event.delta for event in events if event.type == "text_delta"] == ["{", '"title":"Hello"}']
+    assert events[-1].type == "completed"
+    assert events[-1].result is not None
+    assert events[-1].result.output_data == summary
+    assert provider.calls[0]["response_model"] is Summary
+
+
+@pytest.mark.asyncio
+async def test_stream_returns_structured_output_after_tool_turn() -> None:
+    summary = Summary(title="Weather", bullets=["Foggy", "65F"])
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        tool_calls=[
+                            {
+                                "call_id": "call_1",
+                                "name": "ping",
+                                "arguments": {"message": "hello"},
+                                "raw_arguments": '{"message":"hello"}',
+                            }
+                        ],
+                        output_items=[],
+                        raw_response={"id": "resp_1"},
+                    )
+                )
+            ],
+            [
+                ProviderTextDeltaEvent(delta="done"),
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_2",
+                        output_text='{"title":"Weather","bullets":["Foggy","65F"]}',
+                        output_data=summary,
+                        output_items=[],
+                        raw_response={"id": "resp_2"},
+                    )
+                ),
+            ],
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), tools=[ping], provider=provider)
+
+    events = [
+        event
+        async for event in agent.stream(
+            "Use the tool and summarize the result.",
+            response_model=Summary,
+        )
+    ]
+
+    assert [event.type for event in events] == [
+        "tool_call_started",
+        "tool_call_completed",
+        "text_delta",
+        "completed",
+    ]
+    assert events[-1].result is not None
+    assert events[-1].result.output_data == summary
+    assert provider.calls[0]["response_model"] is Summary
+    assert provider.calls[1]["response_model"] is Summary
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_error_event_on_structured_provider_failure() -> None:
+    class FailingStructuredStreamingProvider(FakeStreamingProvider):
+        async def stream_response(
+            self,
+            *,
+            input_items: Sequence[ConversationItem],
+            tools: Sequence[dict[str, Any]],
+            response_model: type[BaseModel] | None = None,
+        ) -> AsyncIterator[ProviderTextDeltaEvent | ProviderCompletedEvent]:
+            raise RuntimeError("structured stream failed")
+            yield
+
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=FailingStructuredStreamingProvider([]),
+    )
+
+    events = [event async for event in agent.stream("Fail.", response_model=Summary)]
+
+    assert [event.type for event in events] == ["error"]
+    assert events[0].error == "structured stream failed"

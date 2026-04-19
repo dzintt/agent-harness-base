@@ -10,14 +10,22 @@ async def ping(message: str) -> str:
 
 
 async def main() -> None:
+    # Smallest useful setup: one agent, one tool, one prompt.
     agent = Agent(
         config=AgentConfig(model="gpt-5"),
         tools=[ping],
     )
 
     result = await agent.run("Call ping with hello and tell me the result.")
-    print(result.output_text)
-    await agent.aclose()
+    try:
+        print("Final text:")
+        print(result.output_text)
+        print()
+        print("Tool results:")
+        for tool_result in result.tool_results:
+            print(f"- {tool_result.name}: {tool_result.output}")
+    finally:
+        await agent.aclose()
 
 
 if __name__ == "__main__":

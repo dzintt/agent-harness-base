@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
+from pydantic import BaseModel
+
 from agent_harness.config import AgentConfig
 from agent_harness.errors import MaxTurnsExceededError
 from agent_harness.providers.base import Provider
@@ -22,7 +24,12 @@ class Agent:
         self.registry = tools if isinstance(tools, ToolRegistry) else ToolRegistry(tools)
         self.provider = provider or OpenAIResponsesProvider(config)
 
-    async def run(self, prompt: str) -> AgentRunResult:
+    async def run(
+        self,
+        prompt: str,
+        *,
+        response_model: type[BaseModel] | None = None,
+    ) -> AgentRunResult:
         transcript = [self._user_message(prompt)]
         tool_results: list[ToolExecutionResult] = []
         raw_responses: list[dict[str, Any]] = []
@@ -31,6 +38,7 @@ class Agent:
             response = await self.provider.create_response(
                 input_items=transcript,
                 tools=self.registry.to_openai_tools(),
+                response_model=response_model,
             )
             raw_responses.append(response.raw_response or {})
             transcript.extend(response.output_items)
@@ -38,6 +46,7 @@ class Agent:
             if not response.tool_calls:
                 return AgentRunResult(
                     output_text=response.output_text,
+                    output_data=response.output_data,
                     response_id=response.response_id,
                     tool_results=tool_results,
                     raw_responses=raw_responses,
@@ -52,7 +61,12 @@ class Agent:
             f"Agent exceeded max_turns={self.config.max_turns} before reaching a final response."
         )
 
-    async def stream(self, prompt: str) -> AsyncIterator[AgentEvent]:
+    async def stream(
+        self,
+        prompt: str,
+        *,
+        response_model: type[BaseModel] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
         transcript = [self._user_message(prompt)]
         tool_results: list[ToolExecutionResult] = []
         raw_responses: list[dict[str, Any]] = []
@@ -64,6 +78,7 @@ class Agent:
                 async for event in self.provider.stream_response(
                     input_items=transcript,
                     tools=self.registry.to_openai_tools(),
+                    response_model=response_model,
                 ):
                     if event.type == "text_delta":
                         yield AgentEvent(type="text_delta", delta=event.delta)
@@ -79,6 +94,7 @@ class Agent:
                 if not final_response.tool_calls:
                     result = AgentRunResult(
                         output_text=final_response.output_text,
+                        output_data=final_response.output_data,
                         response_id=final_response.response_id,
                         tool_results=tool_results,
                         raw_responses=raw_responses,

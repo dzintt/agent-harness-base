@@ -1,0 +1,43 @@
+import asyncio
+
+from pydantic import BaseModel
+
+from agent_harness import Agent, AgentConfig
+
+
+class Summary(BaseModel):
+    title: str
+    bullets: list[str]
+
+
+async def main() -> None:
+    agent = Agent(config=AgentConfig(model="gpt-5"))
+
+    try:
+        async for event in agent.stream(
+            "Summarize why async Python is useful for I/O-heavy agent systems.",
+            response_model=Summary,
+        ):
+            if event.type == "text_delta" and event.delta is not None:
+                print(event.delta, end="")
+            elif event.type == "tool_call_started" and event.tool_call is not None:
+                print()
+                print(f"[tool start] {event.tool_call.name}")
+            elif event.type == "tool_call_completed" and event.tool_result is not None:
+                print()
+                print(f"[tool done] {event.tool_result.name}: {event.tool_result.output}")
+            elif event.type == "completed" and event.result is not None:
+                print()
+                print()
+                print("Structured result:")
+                print(event.result.output_data)
+            elif event.type == "error":
+                print()
+                print()
+                print(f"Stream error: {event.error}")
+    finally:
+        await agent.aclose()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

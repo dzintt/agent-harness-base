@@ -40,6 +40,7 @@ class AgentRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     output_text: str
+    output_data: BaseModel | None = None
     response_id: str | None = None
     tool_results: list[ToolExecutionResult] = Field(default_factory=list)
     raw_responses: list[dict[str, Any]] = Field(default_factory=list)
