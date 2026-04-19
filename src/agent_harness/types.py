@@ -113,6 +113,14 @@ class ChatMessage(BaseModel):
 MessageInput = ChatMessage | dict[str, object]
 
 
+class ChatSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["v1"] = "v1"
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    system_prompt: str | None = None
+
+
 class AgentRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

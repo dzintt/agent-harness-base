@@ -26,6 +26,10 @@ uv run python examples/basic_agent.py
   - Shows how to keep follow-up message history automatically
   - Use this for chat apps and multi-turn conversations
 
+- `chat_persistence.py`
+  - Shows exact chat snapshot export and restore
+  - Use this when you want to resume a chat later without rebuilding history manually
+
 - `system_prompt.py`
   - Shows the first-class `system_prompt` shortcut on the agent, on a chat session, and as a one-off override
   - Use this when you want behavior steering without manually prepending system or developer messages

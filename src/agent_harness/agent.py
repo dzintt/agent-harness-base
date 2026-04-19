@@ -17,6 +17,7 @@ from agent_harness.types import (
     AgentEvent,
     AgentRunResult,
     ChatMessage,
+    ChatSnapshot,
     ImagePart,
     MessageInput,
     TextPart,
@@ -81,6 +82,17 @@ class Agent:
             self,
             items=initial_items,
             system_prompt=self._resolve_system_prompt(system_prompt),
+        )
+
+    def chat_from_snapshot(
+        self,
+        snapshot: ChatSnapshot | dict[str, Any],
+    ) -> ChatSession:
+        validated = snapshot if isinstance(snapshot, ChatSnapshot) else ChatSnapshot.model_validate(snapshot)
+        return ChatSession(
+            self,
+            items=validated.items,
+            system_prompt=self._clean_system_prompt(validated.system_prompt),
         )
 
     async def aclose(self) -> None:

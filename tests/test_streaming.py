@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from agent_harness import Agent, AgentConfig, ChatMessage, ImagePart, TextPart, tool
+from agent_harness import Agent, AgentConfig, ChatMessage, ChatSnapshot, ImagePart, TextPart, tool
 from agent_harness.providers.base import ConversationItem, ProviderCompletedEvent, ProviderResponse, ProviderTextDeltaEvent
 
 
@@ -458,6 +458,120 @@ def test_chat_session_stream_sync_preserves_history() -> None:
         ChatMessage(role="assistant", content="Stored."),
         ChatMessage(role="user", content="What name did I say?"),
         ChatMessage(role="assistant", content="You said Anson."),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_snapshot_after_streaming_completion_includes_completed_turn() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text="Stored.",
+                        output_items=[
+                            {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": "Stored."}],
+                            }
+                        ],
+                        raw_response={"id": "resp_1"},
+                    )
+                )
+            ]
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    chat = agent.chat(system_prompt="You are concise.")
+
+    _ = [event async for event in chat.stream("My name is Anson.")]
+    snapshot = chat.snapshot()
+
+    assert snapshot == ChatSnapshot(
+        items=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": "My name is Anson.",
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Stored."}],
+            },
+        ],
+        system_prompt="You are concise.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_restored_chat_continues_correctly_after_prior_streamed_turns() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text="You said Anson.",
+                        output_items=[
+                            {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": "You said Anson."}],
+                            }
+                        ],
+                        raw_response={"id": "resp_1"},
+                    )
+                )
+            ]
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    restored = agent.chat_from_snapshot(
+        {
+            "version": "v1",
+            "items": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": "My name is Anson.",
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Stored."}],
+                },
+            ],
+            "system_prompt": "You are concise.",
+        }
+    )
+
+    events = [event async for event in restored.stream("What name did I say?")]
+
+    assert events[-1].type == "completed"
+    assert provider.calls[0]["input_items"] == [
+        {
+            "type": "message",
+            "role": "developer",
+            "content": "You are concise.",
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "My name is Anson.",
+        },
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Stored."}],
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "What name did I say?",
+        },
     ]
 
 

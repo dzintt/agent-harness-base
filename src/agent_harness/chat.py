@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from agent_harness.providers.base import ConversationItem
-from agent_harness.types import AgentEvent, AgentRunResult, ChatMessage, MessageInput
+from agent_harness.types import AgentEvent, AgentRunResult, ChatMessage, ChatSnapshot, MessageInput
 
 if TYPE_CHECKING:
     from agent_harness.agent import Agent
@@ -30,6 +30,15 @@ class ChatSession:
     @property
     def items(self) -> list[ConversationItem]:
         return list(self._items)
+
+    def snapshot(self) -> ChatSnapshot:
+        return ChatSnapshot(
+            items=self.items,
+            system_prompt=self._system_prompt,
+        )
+
+    def export(self) -> dict[str, object]:
+        return self.snapshot().model_dump(mode="json")
 
     async def run(
         self,

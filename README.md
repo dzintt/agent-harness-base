@@ -317,6 +317,48 @@ print(chat.history)
 `chat.history` gives you a simple list of `ChatMessage` values for display or storage.
 It does not include the convenience `system_prompt` unless you explicitly passed a system or developer message yourself.
 
+## Conversation Persistence
+
+There are two different persistence levels:
+
+- `chat.history`
+  - simple user-facing `ChatMessage` values
+  - best for display or when you already manage conversation history yourself
+- `chat.snapshot()` / `chat.export()`
+  - exact resumable session state
+  - best when you want to pause and resume a chat later without rebuilding it manually
+
+### Exact session snapshot
+
+```python
+chat = agent.chat(system_prompt="You are concise.")
+
+await chat.run("My name is Anson.")
+await chat.run("My favorite color is teal.")
+
+snapshot = chat.snapshot()
+payload = chat.export()
+```
+
+### Restore later
+
+```python
+restored = agent.chat_from_snapshot(payload)
+result = await restored.run("What is my favorite color?")
+
+print(result.output_text)
+```
+
+### Notes
+
+- `chat.snapshot()` returns a typed `ChatSnapshot`
+- `chat.export()` returns a JSON-friendly dict via `snapshot().model_dump(mode="json")`
+- `agent.chat_from_snapshot(...)` restores the chat session state exactly
+- snapshots restore conversation state only
+- snapshots do not restore model config, tools, or provider settings
+- snapshot restoration preserves the chat session `system_prompt`
+- sync and async users use the same snapshot/export/restore helpers because these methods are local-only and not async
+
 ## Examples
 
 Available examples:
@@ -325,6 +367,7 @@ Available examples:
 - [sync_agent.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/sync_agent.py): smallest sync `run_sync(...)` flow with explicit `close()`
 - [sync_streaming.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/sync_streaming.py): sync iteration over streaming events
 - [chat_session.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/chat_session.py): persistent conversation history for follow-up chat apps
+- [chat_persistence.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/chat_persistence.py): export an exact chat snapshot and restore it later
 - [system_prompt.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/system_prompt.py): first-class system prompt defaults and one-off overrides
 - [parallel_tools.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/parallel_tools.py): opt into concurrent same-turn tool execution
 - [image_input.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/image_input.py): one-turn multimodal input with text plus an image
@@ -494,9 +537,11 @@ An `OPENAI_MODEL` value can also be used as a convenience when creating `AgentCo
 - `agent.stream_sync(input_data, response_model=None, system_prompt=None)`: sync wrapper around streaming events
 - `agent.close()`: sync wrapper for `aclose()`
 - `agent.chat(messages=None, system_prompt=None)`: create a persistent chat session with in-memory history
+- `agent.chat_from_snapshot(snapshot)`: restore a chat session from an exact saved snapshot
 - `chat.run_sync(...)` / `chat.stream_sync(...)`: sync chat session wrappers
 - `AgentConfig(...)`: runtime configuration
 - `ChatMessage(role, content)`: simple message type for explicit conversation history
+- `ChatSnapshot(version="v1", items=[...], system_prompt=...)`: exact resumable chat session state
 - `TextPart(...)`: text content inside a multimodal message
 - `ImagePart.from_url(...)` / `ImagePart.from_file(...)`: image content inside a multimodal message
 - `@tool`: tool decorator

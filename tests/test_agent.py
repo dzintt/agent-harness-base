@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from agent_harness import Agent, AgentConfig, ChatMessage, ImagePart, TextPart, tool
+from agent_harness import Agent, AgentConfig, ChatMessage, ChatSnapshot, ImagePart, TextPart, tool
 from agent_harness.errors import MaxTurnsExceededError, ProviderError, ToolExecutionError
 from agent_harness.providers.base import ConversationItem, ProviderCompletedEvent, ProviderResponse, ProviderTextDeltaEvent
 
@@ -212,6 +212,345 @@ def test_chat_session_run_sync_preserves_history() -> None:
         ChatMessage(role="user", content="What name did I say?"),
         ChatMessage(role="assistant", content="You said Anson."),
     ]
+
+
+@pytest.mark.asyncio
+async def test_chat_snapshot_returns_full_session_state() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="Stored.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Stored."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    chat = agent.chat(system_prompt="You are concise.")
+
+    await chat.run("My name is Anson.")
+    snapshot = chat.snapshot()
+
+    assert snapshot.version == "v1"
+    assert snapshot.system_prompt == "You are concise."
+    assert snapshot.items == [
+        {
+            "type": "message",
+            "role": "user",
+            "content": "My name is Anson.",
+        },
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Stored."}],
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chat_export_returns_json_friendly_dict() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="Stored.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Stored."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    chat = agent.chat(system_prompt="You are concise.")
+
+    await chat.run("My name is Anson.")
+    payload = chat.export()
+
+    assert isinstance(payload, dict)
+    assert payload == {
+        "version": "v1",
+        "items": [
+            {
+                "type": "message",
+                "role": "user",
+                "content": "My name is Anson.",
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Stored."}],
+            },
+        ],
+        "system_prompt": "You are concise.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_chat_from_snapshot_restores_conversation_state() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="You said Anson.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "You said Anson."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    restored = agent.chat_from_snapshot(
+        {
+            "version": "v1",
+            "items": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": "My name is Anson.",
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Stored."}],
+                },
+            ],
+            "system_prompt": "You are concise.",
+        }
+    )
+
+    result = await restored.run("What name did I say?")
+
+    assert result.output_text == "You said Anson."
+    assert provider.calls[0]["input_items"] == [
+        {
+            "type": "message",
+            "role": "developer",
+            "content": "You are concise.",
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "My name is Anson.",
+        },
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Stored."}],
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "What name did I say?",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_restored_chat_uses_snapshot_system_prompt_over_agent_default() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="Done.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Done."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=provider,
+        system_prompt="Agent default prompt",
+    )
+    restored = agent.chat_from_snapshot(
+        {
+            "version": "v1",
+            "items": [],
+            "system_prompt": "Snapshot prompt",
+        }
+    )
+
+    await restored.run("Hello.")
+
+    assert provider.calls[0]["input_items"][0] == {
+        "type": "message",
+        "role": "developer",
+        "content": "Snapshot prompt",
+    }
+
+
+@pytest.mark.asyncio
+async def test_snapshot_does_not_persist_convenience_prompt_as_message_item() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="Stored.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Stored."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    chat = agent.chat(system_prompt="You are concise.")
+
+    await chat.run("My name is Anson.")
+    snapshot = chat.snapshot()
+
+    assert all(item.get("role") != "developer" for item in snapshot.items)
+
+
+@pytest.mark.asyncio
+async def test_chat_from_snapshot_preserves_multimodal_history() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="The image showed a cat.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "The image showed a cat."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    restored = agent.chat_from_snapshot(
+        {
+            "version": "v1",
+            "items": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": "Remember this image."},
+                        {
+                            "type": "input_image",
+                            "image_url": "https://example.com/cat.png",
+                            "detail": "high",
+                        },
+                    ],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Stored the image."}],
+                },
+            ],
+            "system_prompt": None,
+        }
+    )
+
+    result = await restored.run("What was in the image?")
+
+    assert result.output_text == "The image showed a cat."
+    assert provider.calls[0]["input_items"] == [
+        {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "Remember this image."},
+                {
+                    "type": "input_image",
+                    "image_url": "https://example.com/cat.png",
+                    "detail": "high",
+                },
+            ],
+        },
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Stored the image."}],
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "What was in the image?",
+        },
+    ]
+
+
+def test_chat_snapshot_rejects_invalid_version() -> None:
+    with pytest.raises(Exception):
+        ChatSnapshot.model_validate(
+            {
+                "version": "v2",
+                "items": [],
+                "system_prompt": None,
+            }
+        )
+
+
+def test_chat_snapshot_rejects_malformed_payload() -> None:
+    with pytest.raises(Exception):
+        ChatSnapshot.model_validate(
+            {
+                "version": "v1",
+                "items": "not-a-list",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_chat_export_round_trips_through_snapshot_validation() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="Stored.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Stored."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    chat = agent.chat(system_prompt="You are concise.")
+
+    await chat.run("My name is Anson.")
+    payload = chat.export()
+    snapshot = ChatSnapshot.model_validate(payload)
+
+    assert snapshot.version == "v1"
+    assert snapshot.system_prompt == "You are concise."
 
 
 @pytest.mark.asyncio

@@ -399,6 +399,66 @@ async def run_chat_history() -> None:
         await agent.aclose()
 
 
+async def run_chat_persistence() -> None:
+    agent = Agent(config=make_config())
+    chat = agent.chat(system_prompt="You are concise.")
+    first_prompt = "My name is Anson."
+    second_prompt = "My favorite color is teal."
+    follow_up_prompt = "What is my favorite color? Reply with the color only."
+    try:
+        print("Original chat session system_prompt:")
+        print("- You are concise.")
+        print_input("First turn:", first_prompt)
+        first = await chat.run(first_prompt)
+        print_result_details(first)
+
+        print_input("Second turn:", second_prompt)
+        second = await chat.run(second_prompt)
+        print_result_details(second)
+
+        snapshot = chat.snapshot()
+        payload = chat.export()
+
+        print()
+        print("Snapshot summary:")
+        print(f"- version: {snapshot.version}")
+        print(f"- system_prompt: {snapshot.system_prompt}")
+        print(f"- item_count: {len(snapshot.items)}")
+        print(f"- export_keys: {list(payload.keys())}")
+
+        restored = agent.chat_from_snapshot(payload)
+        print()
+        print("Restored chat history:")
+        print_chat_history(restored.history)
+
+        print_input("Follow-up turn on restored chat:", follow_up_prompt)
+        follow_up = await restored.run(follow_up_prompt)
+        print_result_details(follow_up)
+
+        ensure(
+            snapshot.system_prompt == "You are concise.",
+            "Snapshot did not preserve the chat session system prompt.",
+        )
+        ensure(
+            len(snapshot.items) >= 4,
+            "Snapshot did not preserve the completed chat turns.",
+        )
+        ensure(
+            payload.get("version") == "v1",
+            "Exported payload did not include the expected snapshot version.",
+        )
+        ensure(
+            "teal" in follow_up.output_text.lower(),
+            "Restored chat did not preserve the original conversation context.",
+        )
+        ensure(
+            restored.history[: len(chat.history)] == chat.history,
+            "Restored chat history did not match the original persisted history.",
+        )
+    finally:
+        await agent.aclose()
+
+
 async def run_streaming() -> None:
     agent = Agent(config=make_config())
     saw_delta = False
@@ -495,6 +555,7 @@ async def main() -> None:
         await run_check("Tool Call", run_tool_call),
         await run_check("Parallel Tool Calls", run_parallel_tool_calls),
         await run_check("Chat History", run_chat_history),
+        await run_check("Chat Persistence", run_chat_persistence),
         await run_check("Streaming", run_streaming),
         await run_check("Image Structured Output", run_image_structured_output),
         await run_check("Chat With Image Follow-Up", run_chat_with_image_follow_up),
