@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Sequence
+from typing import Any
+
+import pytest
+
+from agent_harness import Agent, AgentConfig, tool
+from agent_harness.providers.base import ConversationItem, ProviderCompletedEvent, ProviderResponse, ProviderTextDeltaEvent
+
+
+class FakeStreamingProvider:
+    def __init__(self, event_sequences: list[list[ProviderTextDeltaEvent | ProviderCompletedEvent]]) -> None:
+        self.event_sequences = list(event_sequences)
+        self.calls: list[dict[str, Any]] = []
+
+    async def create_response(self, *, input_items: Sequence[ConversationItem], tools: Sequence[dict[str, Any]]) -> ProviderResponse:
+        raise NotImplementedError
+
+    async def stream_response(
+        self,
+        *,
+        input_items: Sequence[ConversationItem],
+        tools: Sequence[dict[str, Any]],
+    ) -> AsyncIterator[ProviderTextDeltaEvent | ProviderCompletedEvent]:
+        self.calls.append({"input_items": list(input_items), "tools": list(tools)})
+        for event in self.event_sequences.pop(0):
+            yield event
+
+    async def close(self) -> None:
+        return None
+
+
+class ExplodingStreamingProvider(FakeStreamingProvider):
+    async def stream_response(
+        self,
+        *,
+        input_items: Sequence[ConversationItem],
+        tools: Sequence[dict[str, Any]],
+    ) -> AsyncIterator[ProviderTextDeltaEvent | ProviderCompletedEvent]:
+        raise RuntimeError("stream failed")
+        yield
+
+
+@tool
+async def ping(message: str) -> str:
+    """Echo a message back."""
+    return f"pong: {message}"
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_text_delta_events() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderTextDeltaEvent(delta="Hel"),
+                ProviderTextDeltaEvent(delta="lo"),
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text="Hello",
+                        output_items=[],
+                        raw_response={"id": "resp_1"},
+                    )
+                ),
+            ]
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+
+    events = [event async for event in agent.stream("Say hello.")]
+
+    assert [event.delta for event in events if event.type == "text_delta"] == ["Hel", "lo"]
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_tool_lifecycle_and_completed_events() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        tool_calls=[
+                            {
+                                "call_id": "call_1",
+                                "name": "ping",
+                                "arguments": {"message": "hello"},
+                                "raw_arguments": '{"message":"hello"}',
+                            }
+                        ],
+                        output_items=[
+                            {
+                                "type": "function_call",
+                                "call_id": "call_1",
+                                "name": "ping",
+                                "arguments": '{"message":"hello"}',
+                            }
+                        ],
+                        raw_response={"id": "resp_1"},
+                    )
+                )
+            ],
+            [
+                ProviderTextDeltaEvent(delta="Done"),
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_2",
+                        output_text="Done",
+                        output_items=[],
+                        raw_response={"id": "resp_2"},
+                    )
+                ),
+            ],
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), tools=[ping], provider=provider)
+
+    events = [event async for event in agent.stream("Use ping.")]
+
+    assert [event.type for event in events] == [
+        "tool_call_started",
+        "tool_call_completed",
+        "text_delta",
+        "completed",
+    ]
+    assert events[1].tool_result is not None
+    assert events[1].tool_result.output == "pong: hello"
+    assert events[-1].result is not None
+    assert events[-1].result.output_text == "Done"
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_error_event_on_provider_failure() -> None:
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=ExplodingStreamingProvider([]),
+    )
+
+    events = [event async for event in agent.stream("Fail.")]
+
+    assert [event.type for event in events] == ["error"]
+    assert events[0].error == "stream failed"

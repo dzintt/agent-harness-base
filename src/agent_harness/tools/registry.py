@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from typing import Any
+
+from agent_harness.errors import ToolExecutionError, ToolRegistrationError
+from agent_harness.types import ToolCallRequest, ToolDefinition, ToolExecutionResult
+
+from .base import TOOL_DEFINITION_ATTR, build_tool_definition, dump_tool_output
+
+
+class ToolRegistry:
+    def __init__(self, tools: Iterable[Callable[..., Any]] | None = None) -> None:
+        self._definitions: dict[str, ToolDefinition] = {}
+
+        for tool in tools or ():
+            self.register(tool)
+
+    def register(self, tool_fn: Callable[..., Any]) -> None:
+        definition = getattr(tool_fn, TOOL_DEFINITION_ATTR, None) or build_tool_definition(tool_fn)
+
+        if definition.name in self._definitions:
+            raise ToolRegistrationError(f"Tool '{definition.name}' is already registered.")
+
+        self._definitions[definition.name] = definition
+
+    def get(self, name: str) -> ToolDefinition:
+        try:
+            return self._definitions[name]
+        except KeyError as exc:
+            raise ToolRegistrationError(f"Tool '{name}' is not registered.") from exc
+
+    def list_definitions(self) -> list[ToolDefinition]:
+        return list(self._definitions.values())
+
+    def to_openai_tools(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "name": definition.name,
+                "description": definition.description,
+                "parameters": definition.parameters,
+                "strict": definition.strict,
+            }
+            for definition in self._definitions.values()
+        ]
+
+    async def execute(self, call: ToolCallRequest) -> ToolExecutionResult:
+        definition = self.get(call.name)
+
+        try:
+            validated = definition.arguments_model.model_validate(call.arguments)
+            arguments = validated.model_dump(mode="python")
+            raw_output = await definition.func(**arguments)
+        except Exception as exc:
+            raise ToolExecutionError(f"Tool '{call.name}' failed: {exc}") from exc
+
+        return ToolExecutionResult(
+            call_id=call.call_id,
+            name=call.name,
+            arguments=arguments,
+            output=dump_tool_output(raw_output),
+            raw_output=raw_output,
+        )
