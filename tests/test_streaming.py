@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from agent_harness import Agent, AgentConfig, tool
+from agent_harness import Agent, AgentConfig, ChatMessage, tool
 from agent_harness.providers.base import ConversationItem, ProviderCompletedEvent, ProviderResponse, ProviderTextDeltaEvent
 
 
@@ -280,3 +280,111 @@ async def test_stream_yields_error_event_on_structured_provider_failure() -> Non
 
     assert [event.type for event in events] == ["error"]
     assert events[0].error == "structured stream failed"
+
+
+@pytest.mark.asyncio
+async def test_stream_accepts_multiple_messages() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderTextDeltaEvent(delta="Yep"),
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text="Yep",
+                        output_items=[],
+                        raw_response={"id": "resp_1"},
+                    )
+                ),
+            ]
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+
+    events = [
+        event
+        async for event in agent.stream(
+            [
+                ChatMessage(role="user", content="Remember my name is Anson."),
+                ChatMessage(role="user", content="What's my name?"),
+            ]
+        )
+    ]
+
+    assert [event.type for event in events] == ["text_delta", "completed"]
+    assert provider.calls[0]["input_items"] == [
+        {
+            "type": "message",
+            "role": "user",
+            "content": "Remember my name is Anson.",
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "What's my name?",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chat_session_stream_preserves_history_after_completion() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text="Stored.",
+                        output_items=[
+                            {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": "Stored."}],
+                            }
+                        ],
+                        raw_response={"id": "resp_1"},
+                    )
+                )
+            ],
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_2",
+                        output_text="You said Anson.",
+                        output_items=[
+                            {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": "You said Anson."}],
+                            }
+                        ],
+                        raw_response={"id": "resp_2"},
+                    )
+                )
+            ],
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    chat = agent.chat()
+
+    _ = [event async for event in chat.stream("My name is Anson.")]
+    events = [event async for event in chat.stream("What name did I say?")]
+
+    assert events[-1].type == "completed"
+    assert provider.calls[1]["input_items"] == [
+        {
+            "type": "message",
+            "role": "user",
+            "content": "My name is Anson.",
+        },
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Stored."}],
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "What name did I say?",
+        },
+    ]

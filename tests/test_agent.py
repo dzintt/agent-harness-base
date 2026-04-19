@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from agent_harness import Agent, AgentConfig, tool
+from agent_harness import Agent, AgentConfig, ChatMessage, tool
 from agent_harness.errors import MaxTurnsExceededError, ProviderError, ToolExecutionError
 from agent_harness.providers.base import ConversationItem, ProviderCompletedEvent, ProviderResponse, ProviderTextDeltaEvent
 
@@ -101,6 +101,54 @@ async def test_run_without_tools_returns_plain_text() -> None:
     assert result.output_text == "hello world"
     assert result.output_data is None
     assert result.tool_results == []
+
+
+@pytest.mark.asyncio
+async def test_run_accepts_multiple_messages() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="I remember the earlier messages.",
+                output_items=[],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+
+    result = await agent.run(
+        [
+            ChatMessage(role="system", content="You are concise."),
+            ChatMessage(role="user", content="My name is Anson."),
+            ChatMessage(role="assistant", content="Noted."),
+            ChatMessage(role="user", content="What's my name?"),
+        ]
+    )
+
+    assert result.output_text == "I remember the earlier messages."
+    assert provider.calls[0]["input_items"] == [
+        {
+            "type": "message",
+            "role": "system",
+            "content": "You are concise.",
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "My name is Anson.",
+        },
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": "Noted.",
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "What's my name?",
+        },
+    ]
 
 
 @pytest.mark.asyncio
@@ -358,3 +406,66 @@ async def test_run_surfaces_structured_provider_failures() -> None:
 
     with pytest.raises(ProviderError, match="structured parse failed"):
         await agent.run("Return structured data.", response_model=Person)
+
+
+@pytest.mark.asyncio
+async def test_chat_session_preserves_conversation_history() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="Your name is Anson.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Your name is Anson."}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            ),
+            ProviderResponse(
+                response_id="resp_2",
+                output_text="You told me your name is Anson.",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "You told me your name is Anson."}],
+                    }
+                ],
+                raw_response={"id": "resp_2"},
+            ),
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+    chat = agent.chat()
+
+    first = await chat.run("My name is Anson.")
+    second = await chat.run("What name did I give you?")
+
+    assert first.output_text == "Your name is Anson."
+    assert second.output_text == "You told me your name is Anson."
+    assert provider.calls[1]["input_items"] == [
+        {
+            "type": "message",
+            "role": "user",
+            "content": "My name is Anson.",
+        },
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Your name is Anson."}],
+        },
+        {
+            "type": "message",
+            "role": "user",
+            "content": "What name did I give you?",
+        },
+    ]
+    assert chat.history == [
+        ChatMessage(role="user", content="My name is Anson."),
+        ChatMessage(role="assistant", content="Your name is Anson."),
+        ChatMessage(role="user", content="What name did I give you?"),
+        ChatMessage(role="assistant", content="You told me your name is Anson."),
+    ]

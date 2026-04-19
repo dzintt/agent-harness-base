@@ -1,16 +1,24 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
 from pydantic import BaseModel
 
+from agent_harness.chat import ChatSession
 from agent_harness.config import AgentConfig
 from agent_harness.errors import MaxTurnsExceededError
-from agent_harness.providers.base import Provider
+from agent_harness.providers.base import ConversationItem, Provider
 from agent_harness.providers.openai import OpenAIResponsesProvider
 from agent_harness.tools import ToolRegistry
-from agent_harness.types import AgentEvent, AgentRunResult, ToolCallRequest, ToolExecutionResult
+from agent_harness.types import (
+    AgentEvent,
+    AgentRunResult,
+    ChatMessage,
+    MessageInput,
+    ToolCallRequest,
+    ToolExecutionResult,
+)
 
 
 class Agent:
@@ -26,11 +34,38 @@ class Agent:
 
     async def run(
         self,
-        prompt: str,
+        input_data: str | Sequence[MessageInput],
         *,
         response_model: type[BaseModel] | None = None,
     ) -> AgentRunResult:
-        transcript = [self._user_message(prompt)]
+        transcript = self._normalize_input(input_data)
+        return await self._run_transcript(transcript, response_model=response_model)
+
+    async def stream(
+        self,
+        input_data: str | Sequence[MessageInput],
+        *,
+        response_model: type[BaseModel] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
+        transcript = self._normalize_input(input_data)
+        async for event in self._stream_transcript(transcript, response_model=response_model):
+            yield event
+
+    def chat(self, messages: str | Sequence[MessageInput] | None = None) -> ChatSession:
+        initial_items: list[ConversationItem] = []
+        if messages is not None:
+            initial_items = self._normalize_input(messages)
+        return ChatSession(self, items=initial_items)
+
+    async def aclose(self) -> None:
+        await self.provider.close()
+
+    async def _run_transcript(
+        self,
+        transcript: list[ConversationItem],
+        *,
+        response_model: type[BaseModel] | None = None,
+    ) -> AgentRunResult:
         tool_results: list[ToolExecutionResult] = []
         raw_responses: list[dict[str, Any]] = []
 
@@ -61,13 +96,12 @@ class Agent:
             f"Agent exceeded max_turns={self.config.max_turns} before reaching a final response."
         )
 
-    async def stream(
+    async def _stream_transcript(
         self,
-        prompt: str,
+        transcript: list[ConversationItem],
         *,
         response_model: type[BaseModel] | None = None,
     ) -> AsyncIterator[AgentEvent]:
-        transcript = [self._user_message(prompt)]
         tool_results: list[ToolExecutionResult] = []
         raw_responses: list[dict[str, Any]] = []
 
@@ -115,19 +149,12 @@ class Agent:
         except Exception as exc:
             yield AgentEvent(type="error", error=str(exc))
 
-    async def aclose(self) -> None:
-        await self.provider.close()
-
     async def _execute_tool(self, call: ToolCallRequest) -> ToolExecutionResult:
         return await self.registry.execute(call)
 
     @staticmethod
     def _user_message(prompt: str) -> dict[str, Any]:
-        return {
-            "type": "message",
-            "role": "user",
-            "content": [{"type": "input_text", "text": prompt}],
-        }
+        return Agent._message_to_item(ChatMessage(role="user", content=prompt))
 
     @staticmethod
     def _tool_output_item(result: ToolExecutionResult) -> dict[str, Any]:
@@ -136,3 +163,57 @@ class Agent:
             "call_id": result.call_id,
             "output": result.output,
         }
+
+    def _normalize_input(self, input_data: str | Sequence[MessageInput]) -> list[ConversationItem]:
+        if isinstance(input_data, str):
+            return [self._user_message(input_data)]
+
+        items: list[ConversationItem] = []
+        for message in input_data:
+            if isinstance(message, str):
+                items.append(self._user_message(message))
+            else:
+                chat_message = ChatMessage.model_validate(message)
+                items.append(self._message_to_item(chat_message))
+
+        return items
+
+    @staticmethod
+    def _message_to_item(message: ChatMessage) -> ConversationItem:
+        return {
+            "type": "message",
+            "role": message.role,
+            "content": message.content,
+        }
+
+    @staticmethod
+    def _messages_from_items(items: Sequence[ConversationItem]) -> list[ChatMessage]:
+        messages: list[ChatMessage] = []
+
+        for item in items:
+            if item.get("type") != "message":
+                continue
+
+            role = item.get("role")
+            content_value = item.get("content", [])
+            if not isinstance(role, str):
+                continue
+
+            parts: list[str] = []
+            if isinstance(content_value, str):
+                parts.append(content_value)
+            elif isinstance(content_value, list):
+                for block in content_value:
+                    if not isinstance(block, dict):
+                        continue
+
+                    block_type = block.get("type")
+                    if block_type in {"input_text", "output_text"}:
+                        text = block.get("text")
+                        if isinstance(text, str):
+                            parts.append(text)
+
+            if parts:
+                messages.append(ChatMessage(role=role, content="".join(parts)))
+
+        return messages

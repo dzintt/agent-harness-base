@@ -26,6 +26,8 @@ You can:
 - create an `Agent`
 - register async tools with `@tool`
 - call `await agent.run(...)` for a normal request
+- call `await agent.run([...messages...])` when you already have explicit conversation history
+- create `chat = agent.chat()` for persistent follow-up conversations
 - call `await agent.run(..., response_model=MySchema)` for structured output
 - call `agent.stream(...)` for incremental text and a final structured result
 
@@ -83,11 +85,51 @@ The result object includes:
 - `result.tool_results`: tool execution history
 - `result.raw_responses`: raw-ish provider payloads for debugging
 
+## Conversation History
+
+There are now two trivial ways to work with more than one message.
+
+### 1. Pass a list of messages directly
+
+Use this when you already store conversation history yourself:
+
+```python
+from agent_harness import Agent, AgentConfig, ChatMessage
+
+agent = Agent(config=AgentConfig(model="gpt-5"))
+
+result = await agent.run(
+    [
+        ChatMessage(role="system", content="You are concise."),
+        ChatMessage(role="user", content="My name is Anson."),
+        ChatMessage(role="assistant", content="Noted."),
+        ChatMessage(role="user", content="What's my name?"),
+    ]
+)
+```
+
+### 2. Use a chat session
+
+Use this when you want the harness to keep the conversation history for you:
+
+```python
+chat = agent.chat()
+
+await chat.run("My name is Anson.")
+result = await chat.run("What's my name?")
+
+print(result.output_text)
+print(chat.history)
+```
+
+`chat.history` gives you a simple list of `ChatMessage` values for display or storage.
+
 ## Examples
 
 Available examples:
 
 - [basic_agent.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/basic_agent.py): smallest possible agent with one tool
+- [chat_session.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/chat_session.py): persistent conversation history for follow-up chat apps
 - [structured_output.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/structured_output.py): extract typed data with a Pydantic schema
 - [structured_with_tools.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/structured_with_tools.py): combine tools and structured outputs
 - [streaming.py](/C:/Users/Anson/Desktop/agent-harness-base/examples/streaming.py): stream text deltas and read the final result
@@ -194,6 +236,18 @@ Structured output in streaming mode is exposed only on the final `completed` eve
 - you still receive text deltas as normal
 - `event.result.output_data` is populated only after the response is complete and validated
 
+Streaming also works with chat sessions:
+
+```python
+chat = agent.chat()
+
+async for event in chat.stream("Hello there"):
+    ...
+
+async for event in chat.stream("Follow up on that"):
+    ...
+```
+
 ## Tools
 
 Tools are async functions decorated with `@tool`:
@@ -233,9 +287,11 @@ An `OPENAI_MODEL` value can also be used as a convenience when creating `AgentCo
 ## API Summary
 
 - `Agent(config, tools=None, provider=None)`: main entrypoint
-- `await agent.run(prompt, response_model=None)`: final result API
-- `agent.stream(prompt, response_model=None)`: streaming API
+- `await agent.run(input_data, response_model=None)`: final result API for one message or many
+- `agent.stream(input_data, response_model=None)`: streaming API for one message or many
+- `agent.chat(messages=None)`: create a persistent chat session with in-memory history
 - `AgentConfig(...)`: runtime configuration
+- `ChatMessage(role, content)`: simple message type for explicit conversation history
 - `@tool`: tool decorator
 - `ToolRegistry`: explicit tool registration if you need it
 

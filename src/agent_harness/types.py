@@ -36,6 +36,16 @@ class ToolExecutionResult(BaseModel):
     raw_output: Any | None = None
 
 
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant", "developer", "system"]
+    content: str
+
+
+MessageInput = ChatMessage | dict[str, str]
+
+
 class AgentRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
