@@ -127,10 +127,10 @@ class OpenAIResponsesProvider:
 
     @staticmethod
     def _to_dict(value: Any) -> dict[str, Any]:
+        if hasattr(value, "model_dump"):
+            return value.model_dump(mode="json", warnings="none")
         if hasattr(value, "to_dict"):
             return value.to_dict()
-        if hasattr(value, "model_dump"):
-            return value.model_dump(mode="json")
         if isinstance(value, dict):
             return value
         raise ProviderError(f"Unsupported response payload type: {type(value)!r}")
