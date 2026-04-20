@@ -88,6 +88,22 @@ def test_mcp_server_to_tool_param_minimal() -> None:
     }
 
 
+def test_mcp_server_to_tool_param_maps_boolean_require_approval() -> None:
+    trusted_server = MCPServer(
+        server_label="deepwiki",
+        server_url="https://mcp.deepwiki.com/mcp",
+        require_approval=False,
+    )
+    gated_server = MCPServer(
+        server_label="gh",
+        server_url="https://gitmcp.io/owner/repo",
+        require_approval=True,
+    )
+
+    assert trusted_server.to_tool_param()["require_approval"] == "never"
+    assert gated_server.to_tool_param()["require_approval"] == "always"
+
+
 def test_mcp_server_to_tool_param_full() -> None:
     server = MCPServer(
         server_label="gh",
@@ -245,7 +261,7 @@ async def test_approval_handler_is_called_and_response_item_appended() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://x",
-                require_approval="always",
+                require_approval=True,
             )
         ],
         approval_handler=handler,
@@ -303,7 +319,7 @@ async def test_async_approval_handler_is_awaited() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://x",
-                require_approval="always",
+                require_approval=True,
             )
         ],
         approval_handler=handler,
@@ -343,7 +359,7 @@ async def test_missing_approval_handler_raises() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://x",
-                require_approval="always",
+                require_approval=True,
             )
         ],
     )
@@ -476,7 +492,7 @@ async def test_stream_emits_mcp_approval_requested_event() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://x",
-                require_approval="always",
+                require_approval=True,
             )
         ],
         approval_handler=lambda req: True,

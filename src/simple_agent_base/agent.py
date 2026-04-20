@@ -327,7 +327,7 @@ class Agent:
         if self.approval_handler is None:
             raise MCPApprovalRequiredError(
                 "An MCP server requested approval but no approval_handler was provided. "
-                'Set require_approval="never" on the MCPServer or pass approval_handler=... to Agent(...).'
+                "Set require_approval=False on the MCPServer or pass approval_handler=... to Agent(...)."
             )
 
         items: list[dict[str, Any]] = []

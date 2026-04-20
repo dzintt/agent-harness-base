@@ -151,7 +151,7 @@ Shows:
 - `MCPServer(server_label=..., server_url=...)`
 - `Agent(mcp_servers=[...])`
 - reading `result.mcp_calls`
-- an `approval_handler` with `require_approval="always"`
+- an `approval_handler` with `require_approval=True`
 
 ### `streaming.py`
 

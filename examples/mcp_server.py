@@ -4,7 +4,7 @@ Run:
     uv run python examples/mcp_server.py
 
 Requires a valid OPENAI_API_KEY. The deepwiki server is public and requires
-no authentication. This example opts into `require_approval="never"` so MCP
+no authentication. This example opts into `require_approval=False` so MCP
 tool invocations run automatically without any approval plumbing.
 """
 
@@ -28,7 +28,7 @@ async def basic_mcp_run() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://mcp.deepwiki.com/mcp",
-                require_approval="never",
+                require_approval=False,
             )
         ],
     )
@@ -61,7 +61,7 @@ async def mcp_run_with_approvals() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://mcp.deepwiki.com/mcp",
-                require_approval="always",
+                require_approval=True,
             )
         ],
         approval_handler=approve,

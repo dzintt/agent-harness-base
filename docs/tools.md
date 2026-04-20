@@ -427,7 +427,7 @@ agent = Agent(
         MCPServer(
             server_label="deepwiki",
             server_url="https://mcp.deepwiki.com/mcp",
-            require_approval="never",
+            require_approval=False,
         )
     ],
 )
@@ -447,12 +447,12 @@ agent = Agent(
 | `authorization` | OAuth access token for the remote server. |
 | `headers` | Additional HTTP headers (auth, tracing, etc). |
 | `allowed_tools` | `list[str]` of tool names, or a filter object, to narrow what the model can call. |
-| `require_approval` | Optional override of the platform default approval policy. Use `"never"` for trusted read-only servers, `"always"` to force approval, or a per-tool filter object. |
+| `require_approval` | Optional override of the platform default approval policy. Use `False` for trusted read-only servers, `True` to force approval, or a per-tool filter object. |
 | `server_description` | Free-text hint for the model. |
 
 ### Approvals
 
-For trusted public or read-only servers, set `require_approval="never"` and nothing else is needed:
+For trusted public or read-only servers, set `require_approval=False` and nothing else is needed:
 
 ```python
 agent = Agent(
@@ -461,7 +461,7 @@ agent = Agent(
         MCPServer(
             server_label="deepwiki",
             server_url="https://mcp.deepwiki.com/mcp",
-            require_approval="never",
+            require_approval=False,
         )
     ],
 )
@@ -482,7 +482,7 @@ agent = Agent(
         MCPServer(
             server_label="gh",
             server_url="https://gitmcp.io/owner/repo",
-            require_approval="always",
+            require_approval=True,
         )
     ],
     approval_handler=approve,

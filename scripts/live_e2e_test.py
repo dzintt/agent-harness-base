@@ -650,7 +650,7 @@ async def run_mcp_server() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://mcp.deepwiki.com/mcp",
-                require_approval="never",
+                require_approval=False,
             )
         ],
     )
@@ -660,7 +660,7 @@ async def run_mcp_server() -> None:
     )
     try:
         print("MCP servers:")
-        print("- deepwiki -> https://mcp.deepwiki.com/mcp (require_approval=never)")
+        print("- deepwiki -> https://mcp.deepwiki.com/mcp (require_approval=False)")
         print_input("Sending prompt:", prompt)
         result = await agent.run(prompt)
         print_result_details(result)
@@ -691,7 +691,7 @@ async def run_mcp_server_with_approval() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://mcp.deepwiki.com/mcp",
-                require_approval="always",
+                require_approval=True,
             )
         ],
         approval_handler=approve,
@@ -702,7 +702,7 @@ async def run_mcp_server_with_approval() -> None:
     )
     try:
         print("MCP servers:")
-        print("- deepwiki -> https://mcp.deepwiki.com/mcp (require_approval=always)")
+        print("- deepwiki -> https://mcp.deepwiki.com/mcp (require_approval=True)")
         print_input("Sending prompt:", prompt)
         result = await agent.run(prompt)
         print_result_details(result)
@@ -721,7 +721,7 @@ async def run_mcp_streaming() -> None:
             MCPServer(
                 server_label="deepwiki",
                 server_url="https://mcp.deepwiki.com/mcp",
-                require_approval="never",
+                require_approval=False,
             )
         ],
     )
@@ -734,7 +734,7 @@ async def run_mcp_streaming() -> None:
     final_result = None
     try:
         print("MCP servers:")
-        print("- deepwiki -> https://mcp.deepwiki.com/mcp (require_approval=never)")
+        print("- deepwiki -> https://mcp.deepwiki.com/mcp (require_approval=False)")
         print_input("Sending prompt:", prompt)
         print("Streaming events:")
         async for event in agent.stream(prompt):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,7 +22,7 @@ class MCPServer(BaseModel):
     authorization: str | None = None
     headers: dict[str, str] | None = None
     allowed_tools: list[str] | dict[str, Any] | None = None
-    require_approval: Literal["always", "never"] | dict[str, Any] | None = None
+    require_approval: bool | dict[str, Any] | None = None
     server_description: str | None = None
 
     @model_validator(mode="after")
@@ -56,8 +56,8 @@ class MCPServer(BaseModel):
             else:
                 payload["allowed_tools"] = dict(self.allowed_tools)
         if self.require_approval is not None:
-            if isinstance(self.require_approval, str):
-                payload["require_approval"] = self.require_approval
+            if isinstance(self.require_approval, bool):
+                payload["require_approval"] = "always" if self.require_approval else "never"
             else:
                 payload["require_approval"] = dict(self.require_approval)
         return payload
