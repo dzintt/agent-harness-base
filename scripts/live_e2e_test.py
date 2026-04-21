@@ -45,6 +45,7 @@ PARALLEL_TOOL_EVENTS: list[tuple[str, str, float]] = []
 
 
 class SkippedCheck(RuntimeError):
+    """Raised when the configured backend cannot support a specific live check."""
 
 
 @tool
@@ -94,6 +95,7 @@ def make_config() -> AgentConfig:
     return AgentConfig(temperature=0, timeout=120, max_turns=6)
 
 
+def make_demo_mcp_server(*, require_approval: bool) -> MCPServer:
     fixture_path = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "mcp_demo_server.py"
     ensure(fixture_path.exists(), f"Missing MCP fixture server: {fixture_path}")
     return MCPServer.stdio(
