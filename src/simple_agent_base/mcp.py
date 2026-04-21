@@ -167,17 +167,11 @@ def normalize_mcp_tool_result(result: mcp_types.CallToolResult) -> str:
     if structured is not None:
         return json.dumps(structured, ensure_ascii=False, default=str)
 
-    if hasattr(result, "model_dump"):
-        payload = result.model_dump(mode="json", warnings="none")
-    else:
-        payload = result
-    return json.dumps(payload, ensure_ascii=False, default=str)
+    return json.dumps(_mcp_result_payload(result), ensure_ascii=False, default=str)
 
 
 def mcp_result_payload(result: mcp_types.CallToolResult) -> Any:
-    if hasattr(result, "model_dump"):
-        return result.model_dump(mode="json", warnings="none")
-    return result
+    return _mcp_result_payload(result)
 
 
 class MCPClientBridge:
@@ -346,3 +340,9 @@ def _empty_parameters_schema() -> dict[str, Any]:
         "properties": {},
         "additionalProperties": False,
     }
+
+
+def _mcp_result_payload(result: mcp_types.CallToolResult) -> Any:
+    if hasattr(result, "model_dump"):
+        return result.model_dump(mode="json", warnings="none")
+    return result

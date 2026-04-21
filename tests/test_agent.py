@@ -13,10 +13,8 @@ from simple_agent_base import Agent, AgentConfig, ChatMessage, FilePart, ImagePa
 from simple_agent_base.errors import MaxTurnsExceededError, ProviderError, ToolExecutionError
 from simple_agent_base.providers.base import (
     ConversationItem,
-    ProviderCompletedEvent,
     ProviderEvent,
     ProviderResponse,
-    ProviderTextDeltaEvent,
 )
 
 

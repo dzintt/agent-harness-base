@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from simple_agent_base import Agent, AgentConfig, ChatMessage, ChatSnapshot, FilePart, ImagePart, TextPart, tool
+from simple_agent_base import Agent, AgentConfig, ChatMessage, ChatSnapshot, tool
 from simple_agent_base.providers.base import (
     ConversationItem,
     ProviderCompletedEvent,

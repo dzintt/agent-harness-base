@@ -343,7 +343,7 @@ async def run_check(name: str, fn: Any) -> CheckResult:
         print(f"REASON: {exc}")
         return CheckResult(name=name, status="skip", error=str(exc))
     except Exception as exc:
-        print(f"STATUS: FAIL")
+        print("STATUS: FAIL")
         print(f"ERROR: {exc}")
         return CheckResult(name=name, status="fail", error=str(exc))
 
