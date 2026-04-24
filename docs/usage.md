@@ -327,8 +327,17 @@ Fields:
   Provider response id when available.
 - `tool_results`
   Ordered list of `ToolExecutionResult` values for the run.
+- `usage`
+  Optional aggregate usage metadata across all provider turns in the run.
+- `usage_by_response`
+  Per-response usage metadata in provider-call order. Responses without usage are skipped.
 - `raw_responses`
   Provider payloads collected across all turns.
+
+Usage metadata is optional. APIs and custom `base_url` providers that do not return usage
+produce `usage=None` and `usage_by_response=[]`. Provider-specific usage fields are preserved
+on each per-response usage record's `raw` payload. Use `raw_responses` when you need the full
+provider response payload for debugging.
 
 ## Streaming
 

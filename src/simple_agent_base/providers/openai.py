@@ -11,7 +11,7 @@ from openai import AsyncOpenAI, DefaultAioHttpClient
 
 from simple_agent_base.config import AgentConfig
 from simple_agent_base.errors import ProviderError
-from simple_agent_base.types import ConversationItem, JSONObject, ToolCallRequest
+from simple_agent_base.types import ConversationItem, JSONObject, ToolCallRequest, UsageMetadata
 
 from .base import (
     ProviderCompletedEvent,
@@ -180,7 +180,23 @@ class OpenAIResponsesProvider:
             output_data=cast(BaseModel | None, getattr(response, "output_parsed", None)),
             tool_calls=tool_calls,
             output_items=output_items,
+            usage=self._extract_usage(response),
             raw_response=self._to_dict(response),
+        )
+
+    def _extract_usage(self, response: BaseModel) -> UsageMetadata | None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None
+
+        raw_usage = self._to_dict(usage)
+        return UsageMetadata(
+            input_tokens=self._optional_int(raw_usage.get("input_tokens")),
+            output_tokens=self._optional_int(raw_usage.get("output_tokens")),
+            total_tokens=self._optional_int(raw_usage.get("total_tokens")),
+            input_tokens_details=self._optional_object(raw_usage.get("input_tokens_details")),
+            output_tokens_details=self._optional_object(raw_usage.get("output_tokens_details")),
+            raw=raw_usage,
         )
 
     def _extract_reasoning_summary(self, response: BaseModel) -> str | None:
@@ -209,6 +225,14 @@ class OpenAIResponsesProvider:
 
         summary = separator.join(cleaned_parts).strip()
         return summary or None
+
+    @staticmethod
+    def _optional_int(value: object) -> int | None:
+        return value if isinstance(value, int) else None
+
+    @staticmethod
+    def _optional_object(value: object) -> JSONObject | None:
+        return cast(JSONObject, value) if isinstance(value, dict) else None
 
     @staticmethod
     def _to_dict(value: object) -> JSONObject:

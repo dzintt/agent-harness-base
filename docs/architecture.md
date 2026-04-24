@@ -235,8 +235,13 @@ Responsibilities:
 - call `responses.create(...)`, `responses.parse(...)`, or `responses.stream(...)`
 - convert OpenAI SDK response objects into `ProviderResponse`
 - extract function calls from response output
+- normalize optional usage metadata when the backend returns it
 - parse tool arguments from JSON strings
 - convert provider failures into `ProviderError`
+
+The agent aggregates normalized usage across provider turns in a run. Per-response usage is
+also preserved so tool-loop runs can be inspected turn by turn. Usage remains optional because
+custom `base_url` providers may omit it or return provider-specific fields.
 
 ### Request Construction
 

@@ -45,6 +45,7 @@ from simple_agent_base.types import (
     TextPart,
     ToolCallRequest,
     ToolExecutionResult,
+    UsageMetadata,
 )
 
 T = TypeVar("T")
@@ -196,6 +197,7 @@ class Agent:
         await self._ensure_mcp_ready()
         tool_results: list[ToolExecutionResult] = []
         mcp_calls: list[MCPCallRecord] = []
+        usage_by_response: list[UsageMetadata] = []
         raw_responses: list[JSONObject] = []
 
         for _ in range(self.config.max_turns):
@@ -205,6 +207,8 @@ class Agent:
                 response_model=response_model,
             )
             raw_responses.append(response.raw_response or {})
+            if response.usage is not None:
+                usage_by_response.append(response.usage)
             transcript.extend(response.output_items)
 
             if not response.tool_calls:
@@ -212,6 +216,7 @@ class Agent:
                     response=response,
                     tool_results=tool_results,
                     mcp_calls=mcp_calls,
+                    usage_by_response=usage_by_response,
                     raw_responses=raw_responses,
                 )
 
@@ -233,6 +238,7 @@ class Agent:
     ) -> AsyncIterator[AgentEvent]:
         tool_results: list[ToolExecutionResult] = []
         mcp_calls: list[MCPCallRecord] = []
+        usage_by_response: list[UsageMetadata] = []
         raw_responses: list[JSONObject] = []
 
         await self._ensure_mcp_ready()
@@ -253,6 +259,8 @@ class Agent:
                 raise MaxTurnsExceededError("Provider stream completed without a final response.")
 
             raw_responses.append(final_response.raw_response or {})
+            if final_response.usage is not None:
+                usage_by_response.append(final_response.usage)
             transcript.extend(final_response.output_items)
 
             if not final_response.tool_calls:
@@ -260,6 +268,7 @@ class Agent:
                     response=final_response,
                     tool_results=tool_results,
                     mcp_calls=mcp_calls,
+                    usage_by_response=usage_by_response,
                     raw_responses=raw_responses,
                 )
                 yield AgentEvent(type="completed", result=result)
@@ -405,6 +414,7 @@ class Agent:
         response: ProviderResponse,
         tool_results: list[ToolExecutionResult],
         mcp_calls: list[MCPCallRecord],
+        usage_by_response: list[UsageMetadata],
         raw_responses: list[JSONObject],
     ) -> AgentRunResult:
         return AgentRunResult(
@@ -414,8 +424,31 @@ class Agent:
             response_id=response.response_id,
             tool_results=tool_results,
             mcp_calls=mcp_calls,
+            usage=Agent._aggregate_usage(usage_by_response),
+            usage_by_response=list(usage_by_response),
             raw_responses=raw_responses,
         )
+
+    @staticmethod
+    def _aggregate_usage(usages: Sequence[UsageMetadata]) -> UsageMetadata | None:
+        input_total = Agent._sum_optional_usage_field(usages, "input_tokens")
+        output_total = Agent._sum_optional_usage_field(usages, "output_tokens")
+        total = Agent._sum_optional_usage_field(usages, "total_tokens")
+
+        if input_total is None and output_total is None and total is None:
+            return None
+
+        return UsageMetadata(
+            input_tokens=input_total,
+            output_tokens=output_total,
+            total_tokens=total,
+        )
+
+    @staticmethod
+    def _sum_optional_usage_field(usages: Sequence[UsageMetadata], field_name: str) -> int | None:
+        values = [getattr(usage, field_name) for usage in usages]
+        present = [value for value in values if isinstance(value, int)]
+        return sum(present) if present else None
 
     async def _execute_mcp_tool(
         self,

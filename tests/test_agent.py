@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from simple_agent_base import Agent, AgentConfig, ChatMessage, FilePart, ImagePart, TextPart, tool
+from simple_agent_base import Agent, AgentConfig, ChatMessage, FilePart, ImagePart, TextPart, UsageMetadata, tool
 from simple_agent_base.errors import MaxTurnsExceededError, ProviderError, ToolExecutionError
 from simple_agent_base.providers.base import ProviderEvent, ProviderResponse
 from simple_agent_base.types import ConversationItem
@@ -172,6 +172,107 @@ async def test_run_returns_reasoning_summary_when_provider_supplies_it() -> None
 
     assert result.output_text == "reasoning-ok"
     assert result.reasoning_summary == REASONING_SUMMARY
+
+
+@pytest.mark.asyncio
+async def test_run_returns_none_usage_when_provider_omits_usage() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="hello world",
+                output_items=[],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+
+    result = await agent.run("Say hello.")
+
+    assert result.usage is None
+    assert result.usage_by_response == []
+
+
+@pytest.mark.asyncio
+async def test_run_aggregates_usage_across_tool_turns() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                tool_calls=[
+                    {
+                        "call_id": "call_1",
+                        "name": "ping",
+                        "arguments": {"message": "hello"},
+                        "raw_arguments": '{"message":"hello"}',
+                    }
+                ],
+                output_items=[],
+                usage=UsageMetadata(input_tokens=10, output_tokens=2, total_tokens=12),
+                raw_response={"id": "resp_1"},
+            ),
+            ProviderResponse(
+                response_id="resp_2",
+                output_text="done",
+                output_items=[],
+                usage=UsageMetadata(input_tokens=8, output_tokens=4, total_tokens=12),
+                raw_response={"id": "resp_2"},
+            ),
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), tools=[ping], provider=provider)
+
+    result = await agent.run("Use ping.")
+
+    assert result.output_text == "done"
+    assert [tool_result.output for tool_result in result.tool_results] == ["pong: hello"]
+    assert len(result.usage_by_response) == 2
+    assert result.usage is not None
+    assert result.usage.input_tokens == 18
+    assert result.usage.output_tokens == 6
+    assert result.usage.total_tokens == 24
+    assert result.usage.input_tokens_details is None
+    assert result.usage.output_tokens_details is None
+    assert result.usage.raw is None
+
+
+@pytest.mark.asyncio
+async def test_run_aggregates_partial_usage_fields() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                tool_calls=[
+                    {
+                        "call_id": "call_1",
+                        "name": "ping",
+                        "arguments": {"message": "hello"},
+                        "raw_arguments": '{"message":"hello"}',
+                    }
+                ],
+                output_items=[],
+                usage=UsageMetadata(input_tokens=10),
+                raw_response={"id": "resp_1"},
+            ),
+            ProviderResponse(
+                response_id="resp_2",
+                output_text="done",
+                output_items=[],
+                usage=UsageMetadata(output_tokens=4),
+                raw_response={"id": "resp_2"},
+            ),
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), tools=[ping], provider=provider)
+
+    result = await agent.run("Say hello.")
+
+    assert len(result.usage_by_response) == 2
+    assert result.usage is not None
+    assert result.usage.input_tokens == 10
+    assert result.usage.output_tokens == 4
+    assert result.usage.total_tokens is None
 
 
 @pytest.mark.asyncio

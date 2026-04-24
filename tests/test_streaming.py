@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from simple_agent_base import Agent, AgentConfig, ChatMessage, ChatSnapshot, tool
+from simple_agent_base import Agent, AgentConfig, ChatMessage, ChatSnapshot, UsageMetadata, tool
 from simple_agent_base.errors import ToolExecutionError
 from simple_agent_base.providers.base import (
     ProviderCompletedEvent,
@@ -240,6 +240,87 @@ async def test_stream_completed_result_includes_reasoning_summary() -> None:
     assert events[-1].type == "completed"
     assert events[-1].result is not None
     assert events[-1].result.reasoning_summary == REASONING_SUMMARY
+
+
+@pytest.mark.asyncio
+async def test_stream_completed_result_includes_aggregated_usage() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text="Hello",
+                        output_items=[],
+                        usage=UsageMetadata(input_tokens=5, output_tokens=2, total_tokens=7),
+                        raw_response={"id": "resp_1"},
+                    )
+                ),
+            ]
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), provider=provider)
+
+    events = [event async for event in agent.stream("Say hello.")]
+
+    assert events[-1].type == "completed"
+    assert events[-1].result is not None
+    assert events[-1].result.usage == UsageMetadata(
+        input_tokens=5,
+        output_tokens=2,
+        total_tokens=7,
+    )
+    assert events[-1].result.usage_by_response == [
+        UsageMetadata(input_tokens=5, output_tokens=2, total_tokens=7)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stream_aggregates_usage_after_tool_turn() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        tool_calls=[
+                            {
+                                "call_id": "call_1",
+                                "name": "ping",
+                                "arguments": {"message": "hello"},
+                                "raw_arguments": '{"message":"hello"}',
+                            }
+                        ],
+                        output_items=[],
+                        usage=UsageMetadata(input_tokens=9, output_tokens=3, total_tokens=12),
+                        raw_response={"id": "resp_1"},
+                    )
+                )
+            ],
+            [
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_2",
+                        output_text="Done",
+                        output_items=[],
+                        usage=UsageMetadata(input_tokens=7, output_tokens=4, total_tokens=11),
+                        raw_response={"id": "resp_2"},
+                    )
+                )
+            ],
+        ]
+    )
+    agent = Agent(config=AgentConfig(model="gpt-5"), tools=[ping], provider=provider)
+
+    events = [event async for event in agent.stream("Use ping.")]
+
+    assert events[-1].type == "completed"
+    assert events[-1].result is not None
+    assert len(events[-1].result.usage_by_response) == 2
+    assert events[-1].result.usage is not None
+    assert events[-1].result.usage.input_tokens == 16
+    assert events[-1].result.usage.output_tokens == 7
+    assert events[-1].result.usage.total_tokens == 23
 
 
 @pytest.mark.asyncio

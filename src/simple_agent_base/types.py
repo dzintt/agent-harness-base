@@ -233,6 +233,17 @@ class ChatSnapshot(BaseModel):
     system_prompt: str | None = None
 
 
+class UsageMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    input_tokens_details: JSONObject | None = None
+    output_tokens_details: JSONObject | None = None
+    raw: JSONObject | None = None
+
+
 class AgentRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -242,6 +253,8 @@ class AgentRunResult(BaseModel):
     response_id: str | None = None
     tool_results: list[ToolExecutionResult] = Field(default_factory=list)
     mcp_calls: list[MCPCallRecord] = Field(default_factory=list)
+    usage: UsageMetadata | None = None
+    usage_by_response: list[UsageMetadata] = Field(default_factory=list)
     raw_responses: list[JSONObject] = Field(default_factory=list)
 
 

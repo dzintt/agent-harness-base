@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from simple_agent_base import AgentConfig
 from simple_agent_base.config import ReasoningEffort
@@ -34,6 +34,20 @@ class FakeResponse(BaseModel):
     output_text: str = ""
     output: list[BaseModel]
     output_parsed: BaseModel | None = None
+
+
+class FakeUsage(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    input_tokens: int | None = None
+    input_tokens_details: dict[str, object] | None = None
+    output_tokens: int | None = None
+    output_tokens_details: dict[str, object] | None = None
+    total_tokens: int | None = None
+
+
+class FakeResponseWithUsage(FakeResponse):
+    usage: FakeUsage | dict[str, object] | None = None
 
 
 class FakeStream:
@@ -141,6 +155,70 @@ def test_convert_response_returns_none_when_no_reasoning_item_exists() -> None:
     converted = provider._convert_response(response)
 
     assert converted.reasoning_summary is None
+
+
+def test_convert_response_extracts_usage_metadata() -> None:
+    provider = make_provider()
+    response = FakeResponseWithUsage(
+        output_text="hello",
+        output=[FakeOutputTextItem(content=[{"type": "output_text", "text": "hello"}])],
+        usage=FakeUsage(
+            input_tokens=10,
+            input_tokens_details={"cached_tokens": 3},
+            output_tokens=5,
+            output_tokens_details={"reasoning_tokens": 2},
+            total_tokens=15,
+        ),
+    )
+
+    converted = provider._convert_response(response)
+
+    assert converted.usage is not None
+    assert converted.usage.input_tokens == 10
+    assert converted.usage.input_tokens_details == {"cached_tokens": 3}
+    assert converted.usage.output_tokens == 5
+    assert converted.usage.output_tokens_details == {"reasoning_tokens": 2}
+    assert converted.usage.total_tokens == 15
+    assert converted.usage.raw == {
+        "input_tokens": 10,
+        "input_tokens_details": {"cached_tokens": 3},
+        "output_tokens": 5,
+        "output_tokens_details": {"reasoning_tokens": 2},
+        "total_tokens": 15,
+    }
+
+
+def test_convert_response_allows_missing_usage() -> None:
+    provider = make_provider()
+    response = FakeResponse(
+        output_text="hello",
+        output=[FakeOutputTextItem(content=[{"type": "output_text", "text": "hello"}])],
+    )
+
+    converted = provider._convert_response(response)
+
+    assert converted.usage is None
+
+
+def test_convert_response_tolerates_partial_or_provider_specific_usage() -> None:
+    provider = make_provider()
+    response = FakeResponseWithUsage(
+        output_text="hello",
+        output=[FakeOutputTextItem(content=[{"type": "output_text", "text": "hello"}])],
+        usage={"input_tokens": 12, "provider_units": 4, "total_tokens": "not-an-int"},
+    )
+
+    converted = provider._convert_response(response)
+
+    assert converted.usage is not None
+    assert converted.usage.input_tokens == 12
+    assert converted.usage.output_tokens is None
+    assert converted.usage.total_tokens is None
+    assert converted.usage.raw == {
+        "input_tokens": 12,
+        "provider_units": 4,
+        "total_tokens": "not-an-int",
+    }
 
 
 @pytest.mark.asyncio

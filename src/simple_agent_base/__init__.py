@@ -15,6 +15,7 @@ from .types import (
     TextPart,
     ToolCallRequest,
     ToolExecutionResult,
+    UsageMetadata,
 )
 
 __all__ = [
@@ -37,5 +38,6 @@ __all__ = [
     "ToolCallRequest",
     "ToolExecutionResult",
     "ToolRegistry",
+    "UsageMetadata",
     "tool",
 ]

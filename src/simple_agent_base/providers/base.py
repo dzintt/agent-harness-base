@@ -5,7 +5,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from simple_agent_base.types import ConversationItem, JSONObject, ToolCallRequest
+from simple_agent_base.types import ConversationItem, JSONObject, ToolCallRequest, UsageMetadata
 
 class ProviderResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -16,6 +16,7 @@ class ProviderResponse(BaseModel):
     output_data: BaseModel | None = None
     tool_calls: list[ToolCallRequest] = Field(default_factory=list)
     output_items: list[ConversationItem] = Field(default_factory=list)
+    usage: UsageMetadata | None = None
     raw_response: JSONObject | None = None
 
 

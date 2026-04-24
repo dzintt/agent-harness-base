@@ -108,6 +108,8 @@ await chat.run("What is my name?")
 - `mcp_calls`
 - `reasoning_summary`
 - `response_id`
+- `usage`
+- `usage_by_response`
 - `raw_responses`
 
 ## How It Works
