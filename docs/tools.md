@@ -22,7 +22,7 @@ The package handles four jobs for you:
 3. validate model-supplied arguments with Pydantic
 4. execute the tool locally and send the output back into the transcript
 
-There is no hosted execution layer. Tool code runs in your local Python process.
+Local `@tool` callables run in your local Python process. The package also accepts provider-side **hosted tools** (executed server-side by the model provider) as a thin passthrough — see [Hosted Tools](#hosted-tools).
 
 ## Defining Tools
 
@@ -390,8 +390,8 @@ Methods:
 
 The tool system is intentionally narrow. It does not provide:
 
-- hosted tool execution
-- approvals
+- client-side execution of hosted tools (these are executed by the provider; we only declare them — see [Hosted Tools](#hosted-tools))
+- approvals for local tools (MCP tools support approvals)
 - retries
 - side-effect safety controls
 - dependency-aware tool scheduling
@@ -438,6 +438,54 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+## Hosted Tools
+
+Hosted tools are executed by the model provider on the server side. There is no local Python implementation — you just declare the tool and the provider invokes it directly during a turn, returning the result inline in the response.
+
+Pass them as raw dicts via `hosted_tools`:
+
+```python
+agent = Agent(
+    config=AgentConfig(model="gpt-5.4"),
+    hosted_tools=[{"type": "web_search"}],
+)
+
+result = await agent.run("What's new in Python 3.13?")
+print(result.output_text)
+```
+
+You can mix hosted tools with local `@tool` functions and MCP servers on the same agent.
+
+### Common hosted tool types
+
+These are the tool types commonly available on the OpenAI Responses API:
+
+- `web_search`
+- `file_search`
+- `code_interpreter`
+- `image_generation`
+- `computer_use`
+
+You can include any other dict the provider supports — the package does not maintain a hardcoded list.
+
+### Validation
+
+`hosted_tools` entries must be dicts containing a non-empty string `"type"` field. Anything else raises `ToolRegistrationError` at `Agent` construction time. The package does not validate the rest of the dict — that is left to the provider.
+
+### Provider compatibility
+
+Hosted tool support depends entirely on the backend you point the agent at:
+
+- **Real OpenAI** — supports the full set above.
+- **`chatgpt-codex-proxy`** — supports `web_search` / `web_search_preview` only.
+- **Self-hosted OpenAI-compatible servers** (vLLM, llama.cpp, LiteLLM, etc.) — typically support none.
+
+If your provider rejects a tool type, the error surfaces from the provider, not from this library. The package's job is purely to pass the declaration through.
+
+### What the agent loop does with hosted tools
+
+Nothing client-side. The provider returns hosted tool call items (e.g. `web_search_call`) inside the response output, alongside the final assistant message. The agent loop appends those items to the transcript verbatim and terminates the turn — there is no `tool_call_started` / `tool_call_completed` lifecycle for hosted tools. Inspect them via `result.raw_responses` if you need them.
 
 ## MCP Servers
 

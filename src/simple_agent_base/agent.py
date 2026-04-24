@@ -72,6 +72,7 @@ class Agent:
         provider: Provider | None = None,
         system_prompt: str | None = None,
         mcp_servers: Sequence[MCPServer] | None = None,
+        hosted_tools: Sequence[JSONObject] | None = None,
         approval_handler: ApprovalHandler | None = None,
     ) -> None:
         self.config = config
@@ -79,6 +80,7 @@ class Agent:
         self.provider = provider or OpenAIResponsesProvider(config)
         self.system_prompt = self._clean_system_prompt(system_prompt)
         self.mcp_servers: list[MCPServer] = list(mcp_servers or [])
+        self.hosted_tools: list[JSONObject] = self._validate_hosted_tools(hosted_tools)
         self.approval_handler = approval_handler
         self._mcp_manager = MCPBridgeManager(self.mcp_servers)
         self._sync_runtime: SyncRuntime | None = None
@@ -406,7 +408,29 @@ class Agent:
     def _build_tool_params(self) -> list[JSONObject]:
         tools = list(self.registry.to_openai_tools())
         tools.extend(self._mcp_manager.to_openai_tools())
+        tools.extend(self.hosted_tools)
         return tools
+
+    @staticmethod
+    def _validate_hosted_tools(
+        hosted_tools: Sequence[JSONObject] | None,
+    ) -> list[JSONObject]:
+        if not hosted_tools:
+            return []
+
+        validated: list[JSONObject] = []
+        for index, entry in enumerate(hosted_tools):
+            if not isinstance(entry, dict):
+                raise ToolRegistrationError(
+                    f"hosted_tools[{index}] must be a dict, got {type(entry).__name__}."
+                )
+            tool_type = entry.get("type")
+            if not isinstance(tool_type, str) or not tool_type:
+                raise ToolRegistrationError(
+                    f"hosted_tools[{index}] must include a non-empty string 'type' field."
+                )
+            validated.append(dict(entry))
+        return validated
 
     @staticmethod
     def _build_run_result(

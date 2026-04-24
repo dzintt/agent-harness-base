@@ -10,7 +10,12 @@ import pytest
 from pydantic import BaseModel
 
 from simple_agent_base import Agent, AgentConfig, ChatMessage, FilePart, ImagePart, TextPart, UsageMetadata, tool
-from simple_agent_base.errors import MaxTurnsExceededError, ProviderError, ToolExecutionError
+from simple_agent_base.errors import (
+    MaxTurnsExceededError,
+    ProviderError,
+    ToolExecutionError,
+    ToolRegistrationError,
+)
 from simple_agent_base.providers.base import ProviderEvent, ProviderResponse
 from simple_agent_base.types import ConversationItem
 
@@ -1961,3 +1966,168 @@ def test_image_part_from_file_rejects_unsupported_types(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unsupported image file type"):
         ImagePart.from_file(str(file_path))
+
+
+@pytest.mark.asyncio
+async def test_hosted_tools_are_passed_through_to_provider() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="search done",
+                output_items=[
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "search done"}],
+                    }
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=provider,
+        hosted_tools=[{"type": "web_search"}],
+    )
+
+    result = await agent.run("Search the web.")
+
+    assert result.output_text == "search done"
+    assert provider.calls[0]["tools"] == [{"type": "web_search"}]
+
+
+@pytest.mark.asyncio
+async def test_hosted_tools_coexist_with_local_tools() -> None:
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="ok",
+                output_items=[],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        tools=[ping],
+        provider=provider,
+        hosted_tools=[{"type": "web_search"}, {"type": "code_interpreter"}],
+    )
+
+    await agent.run("Hi.")
+
+    sent_tools = provider.calls[0]["tools"]
+    assert len(sent_tools) == 3
+    # Local function tool comes first, hosted tools come last (per _build_tool_params order).
+    assert sent_tools[0]["name"] == "ping"
+    assert sent_tools[0]["type"] == "function"
+    assert sent_tools[1] == {"type": "web_search"}
+    assert sent_tools[2] == {"type": "code_interpreter"}
+
+
+def test_hosted_tools_reject_non_dict_entries() -> None:
+    with pytest.raises(ToolRegistrationError, match="must be a dict"):
+        Agent(
+            config=AgentConfig(model="gpt-5"),
+            provider=FakeProvider([]),
+            hosted_tools=["web_search"],  # type: ignore[list-item]
+        )
+
+
+def test_hosted_tools_reject_entries_missing_type() -> None:
+    with pytest.raises(ToolRegistrationError, match="non-empty string 'type'"):
+        Agent(
+            config=AgentConfig(model="gpt-5"),
+            provider=FakeProvider([]),
+            hosted_tools=[{"foo": "bar"}],
+        )
+
+
+def test_hosted_tools_reject_entries_with_empty_type() -> None:
+    with pytest.raises(ToolRegistrationError, match="non-empty string 'type'"):
+        Agent(
+            config=AgentConfig(model="gpt-5"),
+            provider=FakeProvider([]),
+            hosted_tools=[{"type": ""}],
+        )
+
+
+def test_hosted_tools_default_is_empty_list() -> None:
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=FakeProvider([]),
+    )
+
+    assert agent.hosted_tools == []
+
+
+@pytest.mark.asyncio
+async def test_hosted_tool_only_response_terminates_loop_cleanly() -> None:
+    """A response containing only hosted tool output items (no function_call)
+    should end the loop after one turn and return the final text."""
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="Python 3.13 added free-threaded mode.",
+                output_items=[
+                    {
+                        "type": "web_search_call",
+                        "id": "ws_1",
+                        "status": "completed",
+                    },
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "Python 3.13 added free-threaded mode.",
+                            }
+                        ],
+                    },
+                ],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=provider,
+        hosted_tools=[{"type": "web_search"}],
+    )
+
+    result = await agent.run("What is new in Python 3.13?")
+
+    assert result.output_text == "Python 3.13 added free-threaded mode."
+    assert result.tool_results == []
+    assert len(provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_hosted_tools_dicts_are_copied_not_shared() -> None:
+    """Mutating the original dict after construction must not change what gets sent."""
+    original = {"type": "web_search"}
+    provider = FakeProvider(
+        [
+            ProviderResponse(
+                response_id="resp_1",
+                output_text="ok",
+                output_items=[],
+                raw_response={"id": "resp_1"},
+            )
+        ]
+    )
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=provider,
+        hosted_tools=[original],
+    )
+
+    original["type"] = "file_search"
+    await agent.run("Hi.")
+
+    assert provider.calls[0]["tools"] == [{"type": "web_search"}]

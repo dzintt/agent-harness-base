@@ -165,6 +165,24 @@ agent = Agent(
 
 Timeouts raise `ToolExecutionError`. For sync tools, the timeout stops waiting for the result, but Python cannot forcibly stop the worker thread.
 
+### Hosted Tools
+
+Some providers (notably OpenAI) execute tools server-side and return the result directly in the response. These do not have a Python implementation — you just declare them and the provider handles execution.
+
+```python
+agent = Agent(
+    config=AgentConfig(model="gpt-5.4"),
+    hosted_tools=[{"type": "web_search"}],
+)
+
+result = await agent.run("What's new in Python 3.13?")
+print(result.output_text)
+```
+
+Hosted tool entries are passed through to the provider unchanged. Common types on the OpenAI Responses API include `web_search`, `file_search`, `code_interpreter`, `image_generation`, and `computer_use`.
+
+Support depends on the provider. Real OpenAI supports the full set; OpenAI-compatible proxies and self-hosted servers usually support a subset or none. If your provider rejects a tool type, the error surfaces from the provider, not from this library.
+
 ## Streaming
 
 ```python
