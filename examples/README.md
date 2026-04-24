@@ -11,8 +11,10 @@ uv run python examples/basic_agent.py
 All examples assume:
 
 - you already ran `uv sync`
-- `OPENAI_API_KEY` is set
 - you are running from the repo root
+
+Most examples assume `OPENAI_API_KEY` is set. `custom_provider.py` uses a local
+static provider and does not require an API key.
 
 `OPENAI_MODEL` is optional if you want `AgentConfig()` to pick the model from the environment.
 
@@ -39,6 +41,17 @@ Shows:
 - a tool defined with `@tool`
 - a normal `await agent.run(...)` call
 - how to read `output_text` and `tool_results`
+
+### `custom_provider.py`
+
+Use this when you want to see how provider injection works.
+
+Shows:
+
+- a minimal provider object
+- `agent.run(...)` without an OpenAI API key
+- `agent.stream(...)` with provider events
+- where to adapt test doubles, demos, or OpenAI-compatible providers
 
 ### `sync_agent.py`
 

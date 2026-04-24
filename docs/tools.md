@@ -173,6 +173,35 @@ When the model returns a function call:
 
 The model then sees that tool output on the next turn.
 
+## Tool Failures
+
+Tool failures abort the agent run. They are not converted into tool output for the
+model to recover from.
+
+Current failure behavior:
+
+- tool argument validation failures raise `ToolExecutionError`
+- exceptions raised by sync or async tools are wrapped in `ToolExecutionError`
+- unknown or unregistered tool names raise `ToolRegistrationError`
+- `tool_timeout` applies to local and MCP tool execution
+- sync tool timeouts stop waiting for the result, but cannot forcibly stop the worker thread
+- MCP transport failures and MCP error results are surfaced as `ToolExecutionError`
+- streaming emits any lifecycle events that happen before the failure, then raises
+
+Example:
+
+```python
+from simple_agent_base.errors import ToolExecutionError
+
+
+try:
+    result = await agent.run("Use the risky tool.")
+except ToolExecutionError as exc:
+    print(f"Tool failed: {exc}")
+```
+
+See [Tool Timeouts](#tool-timeouts) for timeout-specific behavior.
+
 ## Sync And Async Tool Execution
 
 Async tools:

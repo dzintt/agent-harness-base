@@ -199,12 +199,15 @@ Important consequence:
 - appends provider output items to the transcript
 - if tool calls were returned, yields `tool_call_started`, executes them, then yields `tool_call_completed`
 - when the final assistant answer arrives, yields one `completed` event with the full `AgentRunResult`
-- wraps runtime failures and yields one `error` event instead of raising
+- raises provider, tool, MCP, and max-turn failures while the stream is being consumed
 
 This split is deliberate:
 
-- final-result APIs raise
-- streaming APIs emit lifecycle events
+- final-result APIs raise runtime errors
+- streaming APIs emit lifecycle events for normal progress and still raise runtime errors
+
+For example, if a tool times out during streaming, the consumer may already have received
+`tool_call_started`, and then iteration raises `ToolExecutionError`.
 
 ## Provider Abstraction
 
@@ -397,7 +400,10 @@ General rule:
 
 - configuration and synchronous call misuse raise immediately
 - final-result APIs raise runtime errors
-- streaming APIs convert runtime errors into `error` events
+- streaming APIs raise runtime errors while the stream is being consumed
+
+There is no `error` event type in `AgentEvent`. Streaming events describe normal lifecycle
+progress; failures are surfaced as exceptions.
 
 ## Tests As Behavioral Spec
 
