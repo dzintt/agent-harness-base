@@ -287,6 +287,10 @@ class OpenAIResponsesProvider:
             return cast(JSONObject, to_dict())
         if isinstance(value, dict):
             return cast(JSONObject, value)
+        try:
+            return cast(JSONObject, dict(vars(value)))
+        except TypeError:
+            pass
         raise ProviderError(f"Unsupported response payload type: {type(value)!r}")
 
     @staticmethod
@@ -328,6 +332,7 @@ class OpenAIResponsesProvider:
             status=status,
             output_index=output_index if isinstance(output_index, int) else None,
             sequence_number=sequence_number if isinstance(sequence_number, int) else None,
+            item=cls._to_dict(item),
         )
 
     @classmethod
@@ -349,8 +354,6 @@ class OpenAIResponsesProvider:
         status = getattr(item, "status", "completed")
         if not isinstance(status, str):
             status = "completed"
-        if hosted_tool_statuses.get(item_id) == status:
-            return None
 
         hosted_tool_statuses[item_id] = status
         return ProviderHostedToolCallEvent(
@@ -360,6 +363,7 @@ class OpenAIResponsesProvider:
             status=status,
             output_index=output_index if isinstance(output_index, int) else None,
             sequence_number=sequence_number if isinstance(sequence_number, int) else None,
+            item=cls._to_dict(item),
         )
 
     @classmethod
@@ -380,9 +384,11 @@ class OpenAIResponsesProvider:
             return None
 
         hosted_tool_meta[item_id] = tool_type
-        provider_event_type = "hosted_tool_call_started" if status == "in_progress" else "hosted_tool_call_updated"
         if status == "completed":
-            provider_event_type = "hosted_tool_call_completed"
+            hosted_tool_statuses[item_id] = status
+            return None
+
+        provider_event_type = "hosted_tool_call_started" if status == "in_progress" else "hosted_tool_call_updated"
         if hosted_tool_statuses.get(item_id) == status:
             return None
 
@@ -398,6 +404,7 @@ class OpenAIResponsesProvider:
             sequence_number=getattr(event, "sequence_number", None)
             if isinstance(getattr(event, "sequence_number", None), int)
             else None,
+            item=None,
         )
 
     @staticmethod

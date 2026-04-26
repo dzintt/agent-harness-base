@@ -287,6 +287,7 @@ class Agent:
                             status=event.status,
                             output_index=event.output_index,
                             sequence_number=event.sequence_number,
+                            item=event.item,
                         ),
                     )
                 elif event.type == "completed":

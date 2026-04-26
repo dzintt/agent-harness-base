@@ -338,6 +338,10 @@ async def test_stream_response_emits_web_search_call_events() -> None:
                         id="ws_1",
                         type="web_search_call",
                         status="completed",
+                        action={
+                            "type": "search",
+                            "query": "longevity clinic san diego",
+                        },
                     ),
                 ),
             ],
@@ -357,6 +361,21 @@ async def test_stream_response_emits_web_search_call_events() -> None:
     assert [event.item_id for event in search_events] == ["ws_1", "ws_1", "ws_1"]
     assert [event.tool_type for event in search_events] == ["web_search_call", "web_search_call", "web_search_call"]
     assert [event.status for event in search_events] == ["in_progress", "searching", "completed"]
+    assert search_events[0].item == {
+        "id": "ws_1",
+        "type": "web_search_call",
+        "status": "in_progress",
+    }
+    assert search_events[1].item is None
+    assert search_events[2].item == {
+        "id": "ws_1",
+        "type": "web_search_call",
+        "status": "completed",
+        "action": {
+            "type": "search",
+            "query": "longevity clinic san diego",
+        },
+    }
 
 
 @pytest.mark.asyncio
@@ -419,6 +438,17 @@ async def test_stream_response_emits_generic_hosted_tool_events_for_file_search(
         "searching",
         "completed",
     ]
+    assert hosted_events[0].item == {
+        "id": "fs_1",
+        "type": "file_search_call",
+        "status": "in_progress",
+    }
+    assert hosted_events[1].item is None
+    assert hosted_events[2].item == {
+        "id": "fs_1",
+        "type": "file_search_call",
+        "status": "completed",
+    }
 
 
 @pytest.mark.asyncio
@@ -481,6 +511,17 @@ async def test_stream_response_emits_generic_hosted_tool_events_for_code_interpr
         "interpreting",
         "completed",
     ]
+    assert hosted_events[0].item == {
+        "id": "ci_1",
+        "type": "code_interpreter_call",
+        "status": "in_progress",
+    }
+    assert hosted_events[1].item is None
+    assert hosted_events[2].item == {
+        "id": "ci_1",
+        "type": "code_interpreter_call",
+        "status": "completed",
+    }
 
 
 @pytest.mark.asyncio

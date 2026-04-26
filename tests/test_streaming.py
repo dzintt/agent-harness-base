@@ -462,6 +462,11 @@ async def test_stream_yields_web_search_call_events() -> None:
                     item_id="ws_1",
                     tool_type="web_search_call",
                     status="in_progress",
+                    item={
+                        "id": "ws_1",
+                        "type": "web_search_call",
+                        "status": "in_progress",
+                    },
                 ),
                 ProviderHostedToolCallEvent(
                     type="hosted_tool_call_updated",
@@ -474,6 +479,15 @@ async def test_stream_yields_web_search_call_events() -> None:
                     item_id="ws_1",
                     tool_type="web_search_call",
                     status="completed",
+                    item={
+                        "id": "ws_1",
+                        "type": "web_search_call",
+                        "status": "completed",
+                        "action": {
+                            "type": "search",
+                            "query": "longevity clinic san diego",
+                        },
+                    },
                 ),
                 ProviderCompletedEvent(
                     response=ProviderResponse(
@@ -522,6 +536,24 @@ async def test_stream_yields_web_search_call_events() -> None:
         "searching",
         "completed",
     ]
+    assert search_events[0].hosted_tool_call is not None
+    assert search_events[0].hosted_tool_call.item == {
+        "id": "ws_1",
+        "type": "web_search_call",
+        "status": "in_progress",
+    }
+    assert search_events[1].hosted_tool_call is not None
+    assert search_events[1].hosted_tool_call.item is None
+    assert search_events[2].hosted_tool_call is not None
+    assert search_events[2].hosted_tool_call.item == {
+        "id": "ws_1",
+        "type": "web_search_call",
+        "status": "completed",
+        "action": {
+            "type": "search",
+            "query": "longevity clinic san diego",
+        },
+    }
 
 
 @pytest.mark.asyncio

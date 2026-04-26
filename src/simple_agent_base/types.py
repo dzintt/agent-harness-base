@@ -252,6 +252,7 @@ class HostedToolCallUpdate(BaseModel):
     status: str
     output_index: int | None = None
     sequence_number: int | None = None
+    item: JSONObject | None = None
 
 
 class AgentRunResult(BaseModel):
