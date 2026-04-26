@@ -45,6 +45,7 @@ from simple_agent_base.types import (
     TextPart,
     ToolCallRequest,
     ToolExecutionResult,
+    HostedToolCallUpdate,
     UsageMetadata,
 )
 
@@ -272,6 +273,21 @@ class Agent:
                         delta=event.delta,
                         tool_item_id=event.item_id,
                         tool_name=event.name,
+                    )
+                elif event.type in {
+                    "hosted_tool_call_started",
+                    "hosted_tool_call_updated",
+                    "hosted_tool_call_completed",
+                }:
+                    yield AgentEvent(
+                        type=event.type,
+                        hosted_tool_call=HostedToolCallUpdate(
+                            item_id=event.item_id,
+                            tool_type=event.tool_type,
+                            status=event.status,
+                            output_index=event.output_index,
+                            sequence_number=event.sequence_number,
+                        ),
                     )
                 elif event.type == "completed":
                     final_response = event.response

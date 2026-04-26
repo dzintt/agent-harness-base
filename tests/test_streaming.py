@@ -12,6 +12,7 @@ from simple_agent_base.errors import ToolExecutionError
 from simple_agent_base.providers.base import (
     ProviderCompletedEvent,
     ProviderEvent,
+    ProviderHostedToolCallEvent,
     ProviderReasoningDeltaEvent,
     ProviderResponse,
     ProviderTextDeltaEvent,
@@ -449,6 +450,78 @@ async def test_stream_yields_tool_arguments_delta_before_tool_lifecycle() -> Non
     assert "".join(event.delta or "" for event in argument_events) == events[2].tool_call.raw_arguments
     assert [event.tool_item_id for event in argument_events] == ["fc_1", "fc_1"]
     assert [event.tool_name for event in argument_events] == ["ping", "ping"]
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_web_search_call_events() -> None:
+    provider = FakeStreamingProvider(
+        [
+            [
+                ProviderHostedToolCallEvent(
+                    type="hosted_tool_call_started",
+                    item_id="ws_1",
+                    tool_type="web_search_call",
+                    status="in_progress",
+                ),
+                ProviderHostedToolCallEvent(
+                    type="hosted_tool_call_updated",
+                    item_id="ws_1",
+                    tool_type="web_search_call",
+                    status="searching",
+                ),
+                ProviderHostedToolCallEvent(
+                    type="hosted_tool_call_completed",
+                    item_id="ws_1",
+                    tool_type="web_search_call",
+                    status="completed",
+                ),
+                ProviderCompletedEvent(
+                    response=ProviderResponse(
+                        response_id="resp_1",
+                        output_text="Done",
+                        output_items=[
+                            {
+                                "type": "web_search_call",
+                                "id": "ws_1",
+                                "status": "completed",
+                            }
+                        ],
+                        raw_response={"id": "resp_1"},
+                    )
+                ),
+            ]
+        ]
+    )
+    agent = Agent(
+        config=AgentConfig(model="gpt-5"),
+        provider=provider,
+        hosted_tools=[{"type": "web_search"}],
+    )
+
+    events = [event async for event in agent.stream("Search the web.")]
+
+    assert [event.type for event in events] == [
+        "hosted_tool_call_started",
+        "hosted_tool_call_updated",
+        "hosted_tool_call_completed",
+        "completed",
+    ]
+    search_events = events[:-1]
+    assert [event.hosted_tool_call.item_id for event in search_events if event.hosted_tool_call is not None] == [
+        "ws_1",
+        "ws_1",
+        "ws_1",
+    ]
+    assert [event.hosted_tool_call.tool_type for event in search_events if event.hosted_tool_call is not None] == [
+        "web_search_call",
+        "web_search_call",
+        "web_search_call",
+    ]
+    assert [event.hosted_tool_call.status for event in search_events if event.hosted_tool_call is not None] == [
+        "in_progress",
+        "searching",
+        "completed",
+    ]
 
 
 @pytest.mark.asyncio

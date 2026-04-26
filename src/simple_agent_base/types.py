@@ -244,6 +244,16 @@ class UsageMetadata(BaseModel):
     raw: JSONObject | None = None
 
 
+class HostedToolCallUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str
+    tool_type: str
+    status: str
+    output_index: int | None = None
+    sequence_number: int | None = None
+
+
 class AgentRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -265,6 +275,9 @@ class AgentEvent(BaseModel):
         "text_delta",
         "reasoning_delta",
         "tool_arguments_delta",
+        "hosted_tool_call_started",
+        "hosted_tool_call_updated",
+        "hosted_tool_call_completed",
         "tool_call_started",
         "tool_call_completed",
         "mcp_call_started",
@@ -279,4 +292,5 @@ class AgentEvent(BaseModel):
     tool_result: ToolExecutionResult | None = None
     mcp_call: MCPCallRecord | None = None
     mcp_approval: MCPApprovalRequest | None = None
+    hosted_tool_call: HostedToolCallUpdate | None = None
     result: AgentRunResult | None = None

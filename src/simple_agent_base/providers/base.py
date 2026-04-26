@@ -44,6 +44,17 @@ class ProviderToolArgumentsDeltaEvent(BaseModel):
     delta: str
 
 
+class ProviderHostedToolCallEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["hosted_tool_call_started", "hosted_tool_call_updated", "hosted_tool_call_completed"]
+    item_id: str
+    tool_type: str
+    status: str
+    output_index: int | None = None
+    sequence_number: int | None = None
+
+
 class ProviderCompletedEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -54,6 +65,7 @@ ProviderEvent = (
     ProviderTextDeltaEvent
     | ProviderReasoningDeltaEvent
     | ProviderToolArgumentsDeltaEvent
+    | ProviderHostedToolCallEvent
     | ProviderCompletedEvent
 )
 

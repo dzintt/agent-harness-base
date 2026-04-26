@@ -16,6 +16,7 @@ from simple_agent_base.types import ConversationItem, JSONObject, ToolCallReques
 from .base import (
     ProviderCompletedEvent,
     ProviderEvent,
+    ProviderHostedToolCallEvent,
     ProviderReasoningDeltaEvent,
     ProviderResponse,
     ProviderTextDeltaEvent,
@@ -90,6 +91,8 @@ class OpenAIResponsesProvider:
     ) -> AsyncIterator[ProviderEvent]:
         reasoning_summary = _ReasoningSummaryAccumulator()
         function_call_meta: dict[str, tuple[str | None, str | None]] = {}
+        hosted_tool_meta: dict[str, str] = {}
+        hosted_tool_statuses: dict[str, str] = {}
 
         try:
             async with self._client.responses.stream(
@@ -109,6 +112,14 @@ class OpenAIResponsesProvider:
                                 getattr(item, "call_id", None),
                                 getattr(item, "name", None),
                             )
+                        elif (hosted_event := self._hosted_tool_event_from_output_item_added(
+                            item,
+                            output_index=getattr(event, "output_index", None),
+                            sequence_number=getattr(event, "sequence_number", None),
+                            hosted_tool_meta=hosted_tool_meta,
+                            hosted_tool_statuses=hosted_tool_statuses,
+                        )) is not None:
+                            yield hosted_event
                     elif event.type == "response.function_call_arguments.delta":
                         call_id, name = function_call_meta.get(event.item_id, (None, None))
                         yield ProviderToolArgumentsDeltaEvent(
@@ -117,6 +128,22 @@ class OpenAIResponsesProvider:
                             name=name,
                             delta=event.delta,
                         )
+                    elif event.type == "response.output_item.done":
+                        item = getattr(event, "item", None)
+                        if (hosted_event := self._hosted_tool_event_from_output_item_done(
+                            item,
+                            output_index=getattr(event, "output_index", None),
+                            sequence_number=getattr(event, "sequence_number", None),
+                            hosted_tool_meta=hosted_tool_meta,
+                            hosted_tool_statuses=hosted_tool_statuses,
+                        )) is not None:
+                            yield hosted_event
+                    elif (hosted_event := self._hosted_tool_event_from_stream_event(
+                        event,
+                        hosted_tool_meta=hosted_tool_meta,
+                        hosted_tool_statuses=hosted_tool_statuses,
+                    )) is not None:
+                        yield hosted_event
 
                 final_response = await stream.get_final_response()
         except Exception as exc:
@@ -261,3 +288,138 @@ class OpenAIResponsesProvider:
         if isinstance(value, dict):
             return cast(JSONObject, value)
         raise ProviderError(f"Unsupported response payload type: {type(value)!r}")
+
+    @staticmethod
+    def _is_hosted_tool_output_type(item_type: object) -> bool:
+        return (
+            isinstance(item_type, str)
+            and "call" in item_type
+            and item_type not in {"function_call", "function_call_output", "mcp_call"}
+            and not item_type.startswith("mcp_")
+        )
+
+    @classmethod
+    def _hosted_tool_event_from_output_item_added(
+        cls,
+        item: object,
+        *,
+        output_index: object,
+        sequence_number: object,
+        hosted_tool_meta: dict[str, str],
+        hosted_tool_statuses: dict[str, str],
+    ) -> ProviderHostedToolCallEvent | None:
+        item_type = getattr(item, "type", None)
+        item_id = getattr(item, "id", None)
+        if not cls._is_hosted_tool_output_type(item_type) or not isinstance(item_id, str):
+            return None
+
+        hosted_tool_meta[item_id] = item_type
+        status = getattr(item, "status", "in_progress")
+        if not isinstance(status, str):
+            status = "in_progress"
+        if hosted_tool_statuses.get(item_id) == status:
+            return None
+
+        hosted_tool_statuses[item_id] = status
+        return ProviderHostedToolCallEvent(
+            type="hosted_tool_call_started",
+            item_id=item_id,
+            tool_type=item_type,
+            status=status,
+            output_index=output_index if isinstance(output_index, int) else None,
+            sequence_number=sequence_number if isinstance(sequence_number, int) else None,
+        )
+
+    @classmethod
+    def _hosted_tool_event_from_output_item_done(
+        cls,
+        item: object,
+        *,
+        output_index: object,
+        sequence_number: object,
+        hosted_tool_meta: dict[str, str],
+        hosted_tool_statuses: dict[str, str],
+    ) -> ProviderHostedToolCallEvent | None:
+        item_type = getattr(item, "type", None)
+        item_id = getattr(item, "id", None)
+        if not cls._is_hosted_tool_output_type(item_type) or not isinstance(item_id, str):
+            return None
+
+        hosted_tool_meta[item_id] = item_type
+        status = getattr(item, "status", "completed")
+        if not isinstance(status, str):
+            status = "completed"
+        if hosted_tool_statuses.get(item_id) == status:
+            return None
+
+        hosted_tool_statuses[item_id] = status
+        return ProviderHostedToolCallEvent(
+            type="hosted_tool_call_completed",
+            item_id=item_id,
+            tool_type=item_type,
+            status=status,
+            output_index=output_index if isinstance(output_index, int) else None,
+            sequence_number=sequence_number if isinstance(sequence_number, int) else None,
+        )
+
+    @classmethod
+    def _hosted_tool_event_from_stream_event(
+        cls,
+        event: object,
+        *,
+        hosted_tool_meta: dict[str, str],
+        hosted_tool_statuses: dict[str, str],
+    ) -> ProviderHostedToolCallEvent | None:
+        event_type = getattr(event, "type", None)
+        if not isinstance(event_type, str) or not event_type.startswith("response."):
+            return None
+
+        tool_type, status = cls._parse_hosted_tool_stream_event(event_type)
+        item_id = getattr(event, "item_id", None)
+        if tool_type is None or status is None or not isinstance(item_id, str):
+            return None
+
+        hosted_tool_meta[item_id] = tool_type
+        provider_event_type = "hosted_tool_call_started" if status == "in_progress" else "hosted_tool_call_updated"
+        if status == "completed":
+            provider_event_type = "hosted_tool_call_completed"
+        if hosted_tool_statuses.get(item_id) == status:
+            return None
+
+        hosted_tool_statuses[item_id] = status
+        return ProviderHostedToolCallEvent(
+            type=provider_event_type,
+            item_id=item_id,
+            tool_type=tool_type,
+            status=status,
+            output_index=getattr(event, "output_index", None)
+            if isinstance(getattr(event, "output_index", None), int)
+            else None,
+            sequence_number=getattr(event, "sequence_number", None)
+            if isinstance(getattr(event, "sequence_number", None), int)
+            else None,
+        )
+
+    @staticmethod
+    def _parse_hosted_tool_stream_event(event_type: str) -> tuple[str | None, str | None]:
+        if not event_type.startswith("response."):
+            return (None, None)
+
+        event_name = event_type[len("response.") :]
+        prefix_to_tool = {
+            "web_search_call.": "web_search_call",
+            "file_search_call.": "file_search_call",
+            "image_generation_call.": "image_generation_call",
+            "code_interpreter_call.": "code_interpreter_call",
+        }
+        for prefix, tool_type in prefix_to_tool.items():
+            if not event_name.startswith(prefix):
+                continue
+
+            suffix = event_name[len(prefix) :]
+            allowed_statuses = {"in_progress", "searching", "generating", "interpreting", "completed"}
+            if suffix in allowed_statuses:
+                return (tool_type, suffix)
+            return (None, None)
+
+        return (None, None)

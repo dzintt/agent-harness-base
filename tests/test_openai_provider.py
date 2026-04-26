@@ -292,6 +292,198 @@ async def test_stream_response_emits_tool_arguments_delta_events() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_response_emits_web_search_call_events() -> None:
+    provider = make_provider()
+    final_response = FakeResponse(
+        output=[
+            FakeOutputTextItem(content=[{"type": "output_text", "text": "done"}]),
+        ],
+    )
+    provider._client = FakeClient(
+        stream=FakeStream(
+            events=[
+                SimpleNamespace(
+                    type="response.output_item.added",
+                    output_index=0,
+                    sequence_number=1,
+                    item=SimpleNamespace(
+                        id="ws_1",
+                        type="web_search_call",
+                        status="in_progress",
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.web_search_call.in_progress",
+                    item_id="ws_1",
+                    output_index=0,
+                    sequence_number=2,
+                ),
+                SimpleNamespace(
+                    type="response.web_search_call.searching",
+                    item_id="ws_1",
+                    output_index=0,
+                    sequence_number=3,
+                ),
+                SimpleNamespace(
+                    type="response.web_search_call.completed",
+                    item_id="ws_1",
+                    output_index=0,
+                    sequence_number=4,
+                ),
+                SimpleNamespace(
+                    type="response.output_item.done",
+                    output_index=0,
+                    sequence_number=5,
+                    item=SimpleNamespace(
+                        id="ws_1",
+                        type="web_search_call",
+                        status="completed",
+                    ),
+                ),
+            ],
+            final_response=final_response,
+        )
+    )
+
+    events = [event async for event in provider.stream_response(input_items=[], tools=[])]
+
+    assert [event.type for event in events] == [
+        "hosted_tool_call_started",
+        "hosted_tool_call_updated",
+        "hosted_tool_call_completed",
+        "completed",
+    ]
+    search_events = [event for event in events if event.type != "completed"]
+    assert [event.item_id for event in search_events] == ["ws_1", "ws_1", "ws_1"]
+    assert [event.tool_type for event in search_events] == ["web_search_call", "web_search_call", "web_search_call"]
+    assert [event.status for event in search_events] == ["in_progress", "searching", "completed"]
+
+
+@pytest.mark.asyncio
+async def test_stream_response_emits_generic_hosted_tool_events_for_file_search() -> None:
+    provider = make_provider()
+    final_response = FakeResponse(
+        output=[
+            FakeOutputTextItem(content=[{"type": "output_text", "text": "done"}]),
+        ],
+    )
+    provider._client = FakeClient(
+        stream=FakeStream(
+            events=[
+                SimpleNamespace(
+                    type="response.output_item.added",
+                    output_index=0,
+                    sequence_number=1,
+                    item=SimpleNamespace(
+                        id="fs_1",
+                        type="file_search_call",
+                        status="in_progress",
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.file_search_call.searching",
+                    item_id="fs_1",
+                    output_index=0,
+                    sequence_number=2,
+                ),
+                SimpleNamespace(
+                    type="response.output_item.done",
+                    output_index=0,
+                    sequence_number=3,
+                    item=SimpleNamespace(
+                        id="fs_1",
+                        type="file_search_call",
+                        status="completed",
+                    ),
+                ),
+            ],
+            final_response=final_response,
+        )
+    )
+
+    events = [event async for event in provider.stream_response(input_items=[], tools=[])]
+    hosted_events = [event for event in events if event.type != "completed"]
+
+    assert [event.type for event in hosted_events] == [
+        "hosted_tool_call_started",
+        "hosted_tool_call_updated",
+        "hosted_tool_call_completed",
+    ]
+    assert [event.tool_type for event in hosted_events] == [
+        "file_search_call",
+        "file_search_call",
+        "file_search_call",
+    ]
+    assert [event.status for event in hosted_events] == [
+        "in_progress",
+        "searching",
+        "completed",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stream_response_emits_generic_hosted_tool_events_for_code_interpreter() -> None:
+    provider = make_provider()
+    final_response = FakeResponse(
+        output=[
+            FakeOutputTextItem(content=[{"type": "output_text", "text": "done"}]),
+        ],
+    )
+    provider._client = FakeClient(
+        stream=FakeStream(
+            events=[
+                SimpleNamespace(
+                    type="response.output_item.added",
+                    output_index=0,
+                    sequence_number=1,
+                    item=SimpleNamespace(
+                        id="ci_1",
+                        type="code_interpreter_call",
+                        status="in_progress",
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.code_interpreter_call.interpreting",
+                    item_id="ci_1",
+                    output_index=0,
+                    sequence_number=2,
+                ),
+                SimpleNamespace(
+                    type="response.output_item.done",
+                    output_index=0,
+                    sequence_number=3,
+                    item=SimpleNamespace(
+                        id="ci_1",
+                        type="code_interpreter_call",
+                        status="completed",
+                    ),
+                ),
+            ],
+            final_response=final_response,
+        )
+    )
+
+    events = [event async for event in provider.stream_response(input_items=[], tools=[])]
+    hosted_events = [event for event in events if event.type != "completed"]
+
+    assert [event.type for event in hosted_events] == [
+        "hosted_tool_call_started",
+        "hosted_tool_call_updated",
+        "hosted_tool_call_completed",
+    ]
+    assert [event.tool_type for event in hosted_events] == [
+        "code_interpreter_call",
+        "code_interpreter_call",
+        "code_interpreter_call",
+    ]
+    assert [event.status for event in hosted_events] == [
+        "in_progress",
+        "interpreting",
+        "completed",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_stream_response_uses_done_fallback_when_no_reasoning_delta_is_seen() -> None:
     provider = make_provider(reasoning_effort="high")
     final_response = FakeResponse(
