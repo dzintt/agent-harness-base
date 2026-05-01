@@ -31,7 +31,7 @@ It does not try to provide:
 - planning
 - retrieval
 - memory systems
-- hosted tools
+- client-side execution of hosted tools
 - workflow engines
 
 The code is deliberately small enough that one developer can understand it quickly.
@@ -195,6 +195,7 @@ Important consequence:
 - loops up to `config.max_turns`
 - calls `provider.stream_response(...)`
 - yields `text_delta` events as they arrive
+- yields `reasoning_delta`, `tool_arguments_delta`, and hosted-tool lifecycle events when the provider supplies them
 - waits for the provider's final streamed response
 - appends provider output items to the transcript
 - if tool calls were returned, yields `tool_call_started`, executes them, then yields `tool_call_completed`
@@ -223,6 +224,9 @@ Normalized provider result types:
 
 - `ProviderResponse`
 - `ProviderTextDeltaEvent`
+- `ProviderReasoningDeltaEvent`
+- `ProviderToolArgumentsDeltaEvent`
+- `ProviderHostedToolCallEvent`
 - `ProviderCompletedEvent`
 
 This means the rest of the runtime does not need to know the exact OpenAI SDK object types.

@@ -77,6 +77,12 @@ async for event in agent.stream("Use the ping tool, then summarize the result.")
         print(f"[reasoning] {event.delta}")
     elif event.type == "tool_arguments_delta" and event.delta:
         pass
+    elif event.type in {
+        "hosted_tool_call_started",
+        "hosted_tool_call_updated",
+        "hosted_tool_call_completed",
+    } and event.hosted_tool_call is not None:
+        print(f"\n[hosted] {event.hosted_tool_call.tool_type}: {event.hosted_tool_call.status}")
     elif event.type == "tool_call_started" and event.tool_call is not None:
         print(f"\n[tool] starting {event.tool_call.name}")
     elif event.type == "tool_call_completed" and event.tool_result is not None:
@@ -139,6 +145,8 @@ async with Agent(
 ```
 
 Hosted tools are provider-side. No local tool function is called, and `result.tool_results` remains empty for hosted-only responses.
+
+When using `agent.stream(...)`, supported hosted calls can emit `hosted_tool_call_started`, `hosted_tool_call_updated`, and `hosted_tool_call_completed` events with details on `event.hosted_tool_call`.
 
 ## Client-Side MCP Over Stdio
 

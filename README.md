@@ -181,6 +181,8 @@ Hosted tool entries are passed through to the provider unchanged. Common types o
 
 Support depends on the provider. Real OpenAI supports the full set; OpenAI-compatible proxies and self-hosted servers usually support a subset or none. If your provider rejects a tool type, the error surfaces from the provider, not from this library.
 
+Hosted tools do not appear in `result.tool_results`, but streaming can emit `hosted_tool_call_started`, `hosted_tool_call_updated`, and `hosted_tool_call_completed` events for supported provider-side calls.
+
 ## Streaming
 
 ```python
@@ -195,6 +197,10 @@ Event types include:
 
 - `text_delta`
 - `reasoning_delta`
+- `tool_arguments_delta`
+- `hosted_tool_call_started`
+- `hosted_tool_call_updated`
+- `hosted_tool_call_completed`
 - `tool_call_started`
 - `tool_call_completed`
 - `mcp_approval_requested`

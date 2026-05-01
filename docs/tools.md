@@ -485,7 +485,9 @@ If your provider rejects a tool type, the error surfaces from the provider, not 
 
 ### What the agent loop does with hosted tools
 
-Nothing client-side. The provider returns hosted tool call items (e.g. `web_search_call`) inside the response output, alongside the final assistant message. The agent loop appends those items to the transcript verbatim and terminates the turn — there is no `tool_call_started` / `tool_call_completed` lifecycle for hosted tools. Inspect them via `result.raw_responses` if you need them.
+Nothing client-side. The provider returns hosted tool call items (e.g. `web_search_call`) inside the response output, alongside the final assistant message. The agent loop appends those items to the transcript verbatim and terminates the turn if there are no local or MCP function calls. Hosted tools do not produce local `tool_call_started` / `tool_call_completed` events or `ToolExecutionResult` entries.
+
+During streaming, supported OpenAI hosted calls can emit `hosted_tool_call_started`, `hosted_tool_call_updated`, and `hosted_tool_call_completed` events. Use `event.hosted_tool_call` while streaming, or inspect `result.raw_responses` after completion if you need provider-specific hosted tool payloads.
 
 ## MCP Servers
 

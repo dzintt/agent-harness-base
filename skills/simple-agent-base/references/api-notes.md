@@ -20,6 +20,7 @@ These notes summarize the current behavior of the `dzintt/simple-agent-base` Git
 - `AgentEvent`, `AgentRunResult`, `UsageMetadata`
 - `ChatSession`, `ChatMessage`, `ChatSnapshot`, `ConversationItem`
 - `TextPart`, `ImagePart`, `FilePart`
+- `HostedToolCallUpdate`
 - `ToolRegistry`, `tool`, `ToolCallRequest`, `ToolExecutionResult`
 - `MCPServer`, `MCPApprovalRequest`, `MCPApprovalRequiredError`, `MCPCallRecord`, `ApprovalHandler`
 
@@ -107,6 +108,9 @@ Current event types:
 - `text_delta`: incremental assistant text.
 - `reasoning_delta`: incremental reasoning summary text.
 - `tool_arguments_delta`: incremental JSON argument text from function-call streaming.
+- `hosted_tool_call_started`: provider-side hosted tool call became visible.
+- `hosted_tool_call_updated`: provider-side hosted tool call changed status.
+- `hosted_tool_call_completed`: provider-side hosted tool call completed and may include the raw item.
 - `tool_call_started`: emitted once for each model-requested local or MCP function call.
 - `tool_call_completed`: emitted after local or MCP call output is appended.
 - `mcp_approval_requested`: emitted before awaiting approval for gated MCP calls.
@@ -117,6 +121,8 @@ Current event types:
 Failures raise while iterating. There is no `error` event type in current `AgentEvent`.
 
 For parallel streaming tool batches, start events are emitted in model order, execution uses `asyncio.gather`, and completion events are appended in the original call order.
+
+Hosted tool events carry `AgentEvent.hosted_tool_call` as a `HostedToolCallUpdate`. They are normal stream lifecycle events for provider-side tools, but they are not local function calls and do not produce `ToolExecutionResult` entries.
 
 ## Input Normalization
 
@@ -287,6 +293,7 @@ Behavior:
 - Hosted tool output items are provider output items, not local tool calls.
 - The run loop terminates if no local or MCP function calls are returned.
 - `result.tool_results` remains empty for hosted-only responses.
+- Streaming can emit `hosted_tool_call_started`, `hosted_tool_call_updated`, and `hosted_tool_call_completed` events for supported OpenAI hosted call item types such as `web_search_call`, `file_search_call`, `code_interpreter_call`, and `image_generation_call`.
 - Inspect `result.raw_responses` for provider-specific hosted tool payloads.
 
 Do not model OpenAI hosted MCP as `{"type": "mcp"}` for this library. Client-side MCP uses `MCPServer`.
@@ -447,6 +454,7 @@ Use tests to verify:
 - chat snapshot persistence and restore
 - multimodal reconstruction
 - hosted tool validation and passthrough
+- hosted tool streaming lifecycle updates
 - usage aggregation across tool turns
 - tool argument validation and failure wrapping
 - streaming lifecycle event order

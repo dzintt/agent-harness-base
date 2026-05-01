@@ -1,6 +1,6 @@
 ---
 name: simple-agent-base
-description: "Use this skill whenever the user wants to build, debug, review, or modify Python code that uses `simple_agent_base` or the `simple-agent-base` package. This skill is the shortcut context for dzintt/simple-agent-base: Agent, AgentConfig, tools, hosted tools, MCP servers, streaming, structured output, chat snapshots, multimodal inputs, sync wrappers, custom providers, tests, and common mistakes."
+description: "Use this skill whenever the user wants to build, debug, review, or modify Python code that uses `simple_agent_base` or the `simple-agent-base` package. This skill is the shortcut context for dzintt/simple-agent-base: Agent, AgentConfig, tools, hosted tools and hosted-tool streaming events, MCP servers, streaming, structured output, usage metadata, chat snapshots, multimodal inputs, sync wrappers, custom providers, tests, and common mistakes."
 ---
 
 # Simple Agent Base
@@ -35,17 +35,25 @@ It is not a full agent framework. Do not assume it has planning, durable memory,
 from simple_agent_base import (
     Agent,
     AgentConfig,
+    AgentEvent,
+    AgentRunResult,
+    ApprovalHandler,
     ChatMessage,
     ChatSession,
     ChatSnapshot,
+    ConversationItem,
     FilePart,
+    HostedToolCallUpdate,
     ImagePart,
     MCPApprovalRequest,
     MCPApprovalRequiredError,
     MCPCallRecord,
     MCPServer,
     TextPart,
+    ToolCallRequest,
+    ToolExecutionResult,
     ToolRegistry,
+    UsageMetadata,
     tool,
 )
 ```
@@ -54,7 +62,9 @@ Error classes are in `simple_agent_base.errors`:
 
 ```python
 from simple_agent_base.errors import (
+    AgentHarnessError,
     MaxTurnsExceededError,
+    MCPApprovalRequiredError,
     ProviderError,
     ToolDefinitionError,
     ToolExecutionError,
@@ -228,6 +238,9 @@ Current event types:
 - `text_delta`
 - `reasoning_delta`
 - `tool_arguments_delta`
+- `hosted_tool_call_started`
+- `hosted_tool_call_updated`
+- `hosted_tool_call_completed`
 - `tool_call_started`
 - `tool_call_completed`
 - `mcp_approval_requested`
@@ -236,6 +249,8 @@ Current event types:
 - `completed`
 
 Important: streaming failures raise exceptions while the stream is consumed. There is no `error` event in the current source.
+
+For hosted tools, streaming events carry `event.hosted_tool_call` as a `HostedToolCallUpdate` with `item_id`, `tool_type`, `status`, optional ordering fields, and sometimes the raw hosted tool item. These are provider-side lifecycle updates, not local tool executions.
 
 ## Chat Sessions
 
@@ -286,7 +301,7 @@ agent = Agent(
 )
 ```
 
-Hosted tools can be mixed with local tools and MCP servers. They do not create local `tool_call_started` or `tool_call_completed` events, and they do not appear in `result.tool_results`. Inspect `result.raw_responses` if you need hosted tool call payloads.
+Hosted tools can be mixed with local tools and MCP servers. They do not create local `tool_call_started` or `tool_call_completed` events, and they do not appear in `result.tool_results`. During streaming, supported OpenAI hosted calls such as web search, file search, code interpreter, and image generation can emit `hosted_tool_call_started`, `hosted_tool_call_updated`, and `hosted_tool_call_completed` events. Inspect `event.hosted_tool_call` while streaming or `result.raw_responses` after completion if you need hosted tool call payloads.
 
 Provider compatibility is backend-specific. Real OpenAI supports more hosted tools than most OpenAI-compatible proxies.
 
