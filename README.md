@@ -16,22 +16,28 @@ Requirements:
 
 ### 1. Install
 
+From PyPI:
+
+```bash
+python -m pip install simple-agent-base
+```
+
+With `uv`:
+
+```bash
+uv add simple-agent-base
+```
+
 From GitHub:
 
 ```bash
-uv add "git+https://github.com/dzintt/simple-agent-base.git"
+python -m pip install "git+https://github.com/dzintt/simple-agent-base.git"
 ```
 
-Or from a local checkout:
+From a local checkout:
 
 ```bash
 uv sync
-```
-
-With `pip`:
-
-```bash
-python -m pip install "git+https://github.com/dzintt/simple-agent-base.git"
 ```
 
 ### 2. Configure

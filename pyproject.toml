@@ -4,6 +4,20 @@ version = "0.1.0"
 description = "Async-first base harness for building OpenAI-powered agents."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Anson" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "httpx>=0.28.1",
     "mcp>=1.27.0",
@@ -21,6 +35,8 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/dzintt/simple-agent-base"
 Repository = "https://github.com/dzintt/simple-agent-base"
+Issues = "https://github.com/dzintt/simple-agent-base/issues"
+Documentation = "https://github.com/dzintt/simple-agent-base/tree/main/docs"
 
 [dependency-groups]
 dev = [
@@ -29,11 +45,33 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/simple_agent_base"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/docs",
+    "/examples",
+    "/src",
+    "/tests",
+    "/.python-version",
+    "/LICENSE",
+    "/README.md",
+    "/pyproject.toml",
+    "/uv.lock",
+]
+exclude = [
+    "/.env*",
+    "/.gitignore",
+    "/.pytest_cache",
+    "/.ruff_cache",
+    "/.venv",
+    "/dist",
+    "/skills",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
