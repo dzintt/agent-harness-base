@@ -111,7 +111,7 @@ The simplest path is to pass tools directly to `Agent`:
 
 ```python
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     tools=[lookup_user, get_weather],
 )
 ```
@@ -288,7 +288,7 @@ Enable parallel same-turn execution with:
 
 ```python
 config = AgentConfig(
-    model="gpt-5.4",
+    model="gpt-5.5",
     parallel_tool_calls=True,
 )
 ```
@@ -424,7 +424,7 @@ async def get_weather(city: str) -> str:
 
 async def main() -> None:
     agent = Agent(
-        config=AgentConfig(model="gpt-5.4"),
+        config=AgentConfig(model="gpt-5.5"),
         tools=[get_weather],
     )
 
@@ -447,7 +447,7 @@ Pass them as raw dicts via `hosted_tools`:
 
 ```python
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     hosted_tools=[{"type": "web_search"}],
 )
 
@@ -502,7 +502,7 @@ from simple_agent_base import Agent, AgentConfig, MCPServer
 fixture_server = Path("tests/fixtures/mcp_demo_server.py").resolve()
 
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     mcp_servers=[
         MCPServer.stdio(
             name="demo",
@@ -534,7 +534,7 @@ For trusted or read-only servers, set `require_approval=False` and nothing else 
 
 ```python
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     mcp_servers=[
         MCPServer.http(
             name="deepwiki",
@@ -554,7 +554,7 @@ def approve(request: MCPApprovalRequest) -> bool:
     return request.name in {"read_file", "list_files"}
 
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     mcp_servers=[
         MCPServer.http(
             name="gh",

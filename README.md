@@ -38,7 +38,7 @@ python -m pip install "git+https://github.com/dzintt/simple-agent-base.git"
 
 ```bash
 export OPENAI_API_KEY="your-key"
-export OPENAI_MODEL="gpt-5.4"
+export OPENAI_MODEL="gpt-5.5"
 ```
 
 You can also pass `model` directly through `AgentConfig`.
@@ -59,7 +59,7 @@ async def ping(message: str) -> str:
 
 async def main() -> None:
     async with Agent(
-        config=AgentConfig(model="gpt-5.4"),
+        config=AgentConfig(model="gpt-5.5"),
         tools=[ping],
         system_prompt="You are concise.",
     ) as agent:
@@ -145,7 +145,7 @@ Parallel same-turn tool execution is opt-in:
 
 ```python
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4", parallel_tool_calls=True),
+    config=AgentConfig(model="gpt-5.5", parallel_tool_calls=True),
     tools=[get_weather, get_news],
 )
 ```
@@ -156,7 +156,7 @@ Set `tool_timeout` when each local or MCP tool call should have a maximum runtim
 
 ```python
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4", tool_timeout=30.0),
+    config=AgentConfig(model="gpt-5.5", tool_timeout=30.0),
     tools=[lookup_user],
 )
 ```
@@ -169,7 +169,7 @@ Some providers (notably OpenAI) execute tools server-side and return the result 
 
 ```python
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     hosted_tools=[{"type": "web_search"}],
 )
 
@@ -285,7 +285,7 @@ from simple_agent_base import Agent, AgentConfig, MCPServer
 server_path = Path("tests/fixtures/mcp_demo_server.py").resolve()
 
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     mcp_servers=[
         MCPServer.stdio(
             name="demo",
@@ -308,7 +308,7 @@ Supported transports:
 
 ```python
 AgentConfig(
-    model="gpt-5.4",
+    model="gpt-5.5",
     api_key=None,
     base_url=None,
     max_turns=8,
@@ -332,7 +332,7 @@ Environment variables:
 The package is async-first, but synchronous programs can use:
 
 ```python
-with Agent(config=AgentConfig(model="gpt-5.4")) as agent:
+with Agent(config=AgentConfig(model="gpt-5.5")) as agent:
     result = agent.run_sync("Say hello.")
     print(result.output_text)
 ```
