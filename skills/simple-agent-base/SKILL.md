@@ -1,11 +1,11 @@
 ---
 name: simple-agent-base
-description: 'Use this skill whenever the user wants to build, debug, review, or modify Python code that uses `simple_agent_base` or the `simple-agent-base` GitHub package. This skill is the shortcut context for dzintt/simple-agent-base: Agent, AgentConfig, tools, hosted tools, MCP servers, streaming, structured output, chat snapshots, multimodal inputs, sync wrappers, custom providers, tests, and common mistakes. Prefer this skill before researching the repo or guessing the API, even if the user only says "agent harness", "simple agent base", "Responses API agent", or points at `C:\Users\Anson\Desktop\agent-harness-base`.'
+description: "Use this skill whenever the user wants to build, debug, review, or modify Python code that uses `simple_agent_base` or the `simple-agent-base` package. This skill is the shortcut context for dzintt/simple-agent-base: Agent, AgentConfig, tools, hosted tools, MCP servers, streaming, structured output, chat snapshots, multimodal inputs, sync wrappers, custom providers, tests, and common mistakes."
 ---
 
 # Simple Agent Base
 
-Use this skill to write correct code against `simple_agent_base` without re-discovering the library. It is based on the local repo at `C:\Users\Anson\Desktop\agent-harness-base`.
+Use this skill to write correct code against `simple_agent_base` without re-discovering the library. It is based on the `dzintt/simple-agent-base` GitHub project and the published `simple-agent-base` package.
 
 If you need exact edge-case behavior, read `references/api-notes.md`. If you need ready-to-adapt snippets, read `references/examples.md`.
 
@@ -89,7 +89,7 @@ async def ping(message: str) -> str:
 
 async def main() -> None:
     async with Agent(
-        config=AgentConfig(model="gpt-5.4"),
+        config=AgentConfig(model="gpt-5.5"),
         tools=[ping],
         system_prompt="You are concise.",
     ) as agent:
@@ -105,7 +105,7 @@ asyncio.run(main())
 
 ```python
 AgentConfig(
-    model="gpt-5.4",
+    model="gpt-5.5",
     api_key=None,
     base_url=None,
     max_turns=8,
@@ -134,7 +134,7 @@ Agent-level default:
 
 ```python
 async with Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     tools=[ping],
     system_prompt=(
         "You are a concise support agent. Use tools for account lookups, "
@@ -243,7 +243,7 @@ Use `ChatSession` for in-memory conversation state.
 
 ```python
 chat = agent.chat(system_prompt="You are concise.")
-await chat.run("My name is Anson.")
+await chat.run("My name is Taylor.")
 result = await chat.run("What name did I give you?")
 
 snapshot = chat.export()
@@ -281,7 +281,7 @@ Hosted tools are provider-side tools. The library only validates and passes thei
 
 ```python
 agent = Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     hosted_tools=[{"type": "web_search"}],
 )
 ```
@@ -308,7 +308,7 @@ def approve(request: MCPApprovalRequest) -> bool:
 server_path = Path("tests/fixtures/mcp_demo_server.py").resolve()
 
 async with Agent(
-    config=AgentConfig(model="gpt-5.4"),
+    config=AgentConfig(model="gpt-5.5"),
     mcp_servers=[
         MCPServer.stdio(
             name="demo",
@@ -331,7 +331,7 @@ MCP tools are exposed as `server__tool`, for example `demo__echo`. Name conflict
 from simple_agent_base import Agent, AgentConfig
 
 
-with Agent(config=AgentConfig(model="gpt-5.4")) as agent:
+with Agent(config=AgentConfig(model="gpt-5.5")) as agent:
     result = agent.run_sync("Say hello.")
     print(result.output_text)
 ```
