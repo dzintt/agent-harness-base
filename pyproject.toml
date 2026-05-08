@@ -20,10 +20,10 @@ classifiers = [
 ]
 dependencies = [
     "httpx>=0.28.1",
-    "mcp>=1.27.0",
-    "openai[aiohttp]>=2.32.0",
-    "pydantic>=2.13.2",
-    "pydantic-settings>=2.13.1",
+    "mcp>=1.27.1",
+    "openai[aiohttp]>=2.36.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
 ]
 
 [project.optional-dependencies]
@@ -45,7 +45,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling>=1.26"]
+requires = ["hatchling>=1.29.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
