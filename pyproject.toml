@@ -33,10 +33,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/dzintt/simple-agent-base"
-Repository = "https://github.com/dzintt/simple-agent-base"
-Issues = "https://github.com/dzintt/simple-agent-base/issues"
-Documentation = "https://github.com/dzintt/simple-agent-base/tree/main/docs"
+Homepage = "https://github.com/10/simple-agent-base"
+Repository = "https://github.com/10/simple-agent-base"
+Issues = "https://github.com/10/simple-agent-base/issues"
+Documentation = "https://github.com/10/simple-agent-base/tree/main/docs"
 
 [dependency-groups]
 dev = [

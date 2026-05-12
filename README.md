@@ -31,7 +31,7 @@ uv add simple-agent-base
 From GitHub:
 
 ```bash
-python -m pip install "git+https://github.com/dzintt/simple-agent-base.git"
+python -m pip install "git+https://github.com/10/simple-agent-base.git"
 ```
 
 From a local checkout:

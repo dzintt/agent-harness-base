@@ -1,6 +1,6 @@
 # Simple Agent Base API Notes
 
-These notes summarize the current behavior of the `dzintt/simple-agent-base` GitHub project. Prefer source and tests over older prose docs when they conflict.
+These notes summarize the current behavior of the `10/simple-agent-base` GitHub project. Prefer source and tests over older prose docs when they conflict.
 
 ## Package Shape
 
@@ -8,7 +8,7 @@ These notes summarize the current behavior of the `dzintt/simple-agent-base` Git
 - Project name: `simple-agent-base`
 - Python: `>=3.12`
 - Main dependencies: `openai[aiohttp]`, `pydantic`, `pydantic-settings`, `mcp`, `httpx`
-- Install from GitHub: `uv add "git+https://github.com/dzintt/simple-agent-base.git"`
+- Install from GitHub: `uv add "git+https://github.com/10/simple-agent-base.git"`
 - Local development: `uv sync --dev`
 - Tests: `uv run pytest`
 

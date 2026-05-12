@@ -1,11 +1,11 @@
 ---
 name: simple-agent-base
-description: "Use this skill whenever the user wants to build, debug, review, or modify Python code that uses `simple_agent_base` or the `simple-agent-base` package. This skill is the shortcut context for dzintt/simple-agent-base: Agent, AgentConfig, tools, hosted tools and hosted-tool streaming events, MCP servers, streaming, structured output, usage metadata, chat snapshots, multimodal inputs, sync wrappers, custom providers, tests, and common mistakes."
+description: "Use this skill whenever the user wants to build, debug, review, or modify Python code that uses `simple_agent_base` or the `simple-agent-base` package. This skill is the shortcut context for 10/simple-agent-base: Agent, AgentConfig, tools, hosted tools and hosted-tool streaming events, MCP servers, streaming, structured output, usage metadata, chat snapshots, multimodal inputs, sync wrappers, custom providers, tests, and common mistakes."
 ---
 
 # Simple Agent Base
 
-Use this skill to write correct code against `simple_agent_base` without re-discovering the library. It is based on the `dzintt/simple-agent-base` GitHub project and the published `simple-agent-base` package.
+Use this skill to write correct code against `simple_agent_base` without re-discovering the library. It is based on the `10/simple-agent-base` GitHub project and the published `simple-agent-base` package.
 
 If you need exact edge-case behavior, read `references/api-notes.md`. If you need ready-to-adapt snippets, read `references/examples.md`.
 
